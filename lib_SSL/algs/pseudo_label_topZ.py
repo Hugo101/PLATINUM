@@ -60,22 +60,21 @@ class PLtopZ(nn.Module):
             num_geq_095 = torch.sum(unlabeled_prediction.max(1)[0] > 0.95).item()
             print(f"+++++ The num of samples with high confidence > 0.95 is: {num_geq_095}")
 
-        if self.scenario == "random":
+        if self.scenario == "distractor":
             # ==== for OOD randomly selection todo: check this later (11-30-2021)
-            num_oods = (y_true * rest_mask == -1).sum(dim=0)
-            num_unlabeled = rest_mask.sum(dim=0)
+            # num_oods = (y_true * rest_mask == -1).sum(dim=0)
+            # num_unlabeled = rest_mask.sum(dim=0)
             num_oods_select = (y_true * rest_mask * gt_mask == -1).sum(dim=0)
             ratio_ood = "{}/{}={:.4f}".format(num_oods_select, num_selected,
                                               num_oods_select / num_selected)
             if self.verbose:
-                print("=== OOD samples analysis:")
-                print("====== The ratio of OOD samples in the unlabeled set is "
-                    "{}/{}={:.4f}.".format(num_oods, num_unlabeled, num_oods / num_unlabeled))
+                # print("=== OOD samples analysis:")
+                # print("====== The ratio of OOD samples in the unlabeled set is "
+                #     "{}/{}={:.4f}.".format(num_oods, num_unlabeled, num_oods / num_unlabeled))
                 print(f"====== The ratio of OOD samples in the selected unlabeled set is {ratio_ood}.")
             # ====
 
-        if self.scenario == "woDistractor":
-            # ====== todo: this does not work for random selection for now
+        if self.scenario in ["woDistractor", "distractor"]:
             onehot_label_true = self.__make_one_hot(y_true, self.num_cls)                        # 350,5 (350 #unlabel)
             onehot_label_pred_selected = gt_mask[:, None] * onehot_label_pred                    # 350,5
             onehot_label_pred_selected_correct = onehot_label_true * onehot_label_pred_selected  # 350,5
@@ -132,8 +131,8 @@ class PLtopZ(nn.Module):
         print("++++++ the loss of selected unlabeled samples: {:.8f}.\n".format(loss)) if self.verbose else None
         if self.scenario == "woDistractor":
             return loss, 0, acc_slct, selected_idx.cpu().numpy()
-        if self.scenario == "random":
-            return loss, ratio_ood, None, selected_idx.cpu().numpy()
+        if self.scenario == "distractor":
+            return loss, ratio_ood, acc_slct, selected_idx.cpu().numpy()
 
     def __make_one_hot(self, y, n_classes=3):  # todo: attention to the dimension
         return torch.eye(n_classes)[y].to(y.device)

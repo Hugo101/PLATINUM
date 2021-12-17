@@ -43,7 +43,7 @@ class ConcatTask(Task, ConcatDataset):
         index = tuple(task.index for task in datasets)
         Task.__init__(self, index, num_classes)
         ConcatDataset.__init__(self, datasets)
-        for task in self.datasets: #self.datasets is from ConcatDataset: list(datasets)
+        for task in self.datasets:    # self.datasets is from ConcatDataset: list(datasets)
             task.target_transform_append(target_transform)
 
     def __getitem__(self, index):
@@ -66,14 +66,30 @@ class SubsetTask(Task, Subset):
         return hash((self.index, tuple(self.indices)))
 
 
-# class SubsetUnlabel(Subset):
-#     def __init__(self, dataset, indices, indices_ood):
-#         Subset.__init__(self, dataset, indices)
-#         self.indices_ood = indices_ood
-#
-#     def __getitem__(self, index):
-#         img, label = Subset.__getitem__(self, index)
-#
+class SubsetCombine(Task):
+    def __init__(self, dataset, indices, dataset_ood, indices_ood,
+                 num_classes=None, target_transform=None):
+        if num_classes is None:
+            num_classes = dataset.num_classes
+        Task.__init__(self, dataset.index, num_classes)
+        self.dataset_ID = dataset   # selected classes
+        self.indices_ID = indices
+        self.len_dataset_ID = len(indices)
+
+        self.dataset_OOD = dataset_ood
+        self.indices_OOD = indices_ood
+
+    def __getitem__(self, index):
+        if index < self.len_dataset_ID:
+            return self.dataset_ID[self.indices_ID[index]]   # ID examples
+        else:
+            index_pick = self.indices_OOD[index - self.len_dataset_ID]
+            img, label = self.dataset_OOD[index_pick]
+            return img, -1   # OOD examples
+
+    def __len__(self):
+        return self.len_dataset_ID + len(self.indices_OOD)
+
 
 class SubsetTask_unlabel(Task, Subset):
     def __init__(self, dataset, indices, indices_ood, num_classes=None,
@@ -98,7 +114,3 @@ class SubsetTask_unlabel(Task, Subset):
 
     def __hash__(self):
         return hash((self.index, tuple(self.indices)))
-
-
-
-

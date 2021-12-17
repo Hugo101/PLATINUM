@@ -9,23 +9,8 @@ from torch.utils.data.dataset import Dataset as TorchDataset
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from dataset_meta import CombinationMetaDataset
 from sampler_meta import CombinationSequentialSampler, CombinationRandomSampler
-# print(CombinationRandomSampler in sys.modules) # TODO: check the library is imported or not(not sure)
-
-# print(__file__)
-# print(os.path.abspath(__file__))
-# print(os.path.dirname(os.path.abspath(__file__)))
-# print(os.path.dirname(os.path.realpath(__file__)))
-# print(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-### use the following two lines: no error in pycharm, but not working in terminal
-# from dataset_self import CombinationMetaDataset
-# from sampler_self import CombinationSequentialSampler, CombinationRandomSampler
-# ===
-
-# print(CombinationRandomSampler in sys.modules)
-
 
 class BatchMetaCollate(object):
-
     def __init__(self, collate_fn):
         super().__init__()
         self.collate_fn = collate_fn
@@ -57,7 +42,7 @@ class MetaDataLoader(DataLoader):
 
         if isinstance(dataset, CombinationMetaDataset) and (sampler is None):
             if shuffle:
-                sampler = CombinationRandomSampler(dataset)
+                sampler = CombinationRandomSampler(dataset)    # sample class index
             else:
                 sampler = CombinationSequentialSampler(dataset)
             shuffle = False

@@ -83,15 +83,16 @@ class MiniImagenet(CombinationMetaDataset):
            Few-Shot Learning. (https://openreview.net/forum?id=rJY0-Kcll)
     """
 
-    def __init__(self, root, task_generate_method=None, num_classes_per_task=None, meta_train=False,
-                 meta_val=False, meta_test=False, meta_split=None,
+    def __init__(self, root, task_generate_method=None, num_classes_per_task=None, num_classes_distractor=None,
+                 meta_train=False, meta_val=False, meta_test=False, meta_split=None,
                  transform=None, target_transform=None, dataset_transform=None,
                  class_augmentations=None, download=False):
-        dataset = MiniImagenetClassDataset(root, meta_train=meta_train,
-                                           meta_val=meta_val, meta_test=meta_test, meta_split=meta_split,
+        dataset = MiniImagenetClassDataset(root, meta_train=meta_train, meta_val=meta_val, meta_test=meta_test,
+                                           meta_split=meta_split,
                                            transform=transform, class_augmentations=class_augmentations,
                                            download=download)
         super(MiniImagenet, self).__init__(dataset, task_generate_method, num_classes_per_task,
+                                           num_classes_distractor=num_classes_distractor,
                                            target_transform=target_transform, dataset_transform=dataset_transform)
 
 
@@ -109,8 +110,8 @@ class MiniImagenetClassDataset(ClassDataset):
     def __init__(self, root, meta_train=False, meta_val=False, meta_test=False,
                  meta_split=None, transform=None, class_augmentations=None,
                  download=False):
-        super(MiniImagenetClassDataset, self).__init__(meta_train=meta_train,
-                                                       meta_val=meta_val, meta_test=meta_test, meta_split=meta_split,
+        super(MiniImagenetClassDataset, self).__init__(meta_train=meta_train, meta_val=meta_val, meta_test=meta_test,
+                                                       meta_split=meta_split,
                                                        class_augmentations=class_augmentations)
 
         self.root = os.path.join(os.path.expanduser(root), self.folder)

@@ -225,8 +225,7 @@ class CombinationMetaDataset(MetaDataset):
     Parameters
     ----------
     dataset : `ClassDataset` instance
-        A dataset of classes. Each item of `dataset` is a dataset, containing
-        all the examples from the same class.
+        A dataset of classes. Each item of `dataset` is a dataset, containing all the examples from the same class.
 
     num_classes_per_task : int
         Number of classes per tasks. This corresponds to `N` in `N-way`
@@ -240,7 +239,9 @@ class CombinationMetaDataset(MetaDataset):
         A function/transform that takes a dataset (ie. a task), and returns a
         transformed version of it. E.g. `transforms.ClassSplitter()`.
     """
-    def __init__(self, dataset, task_generate_method, num_classes_per_task, target_transform=None,
+    def __init__(self, dataset, task_generate_method,
+                 num_classes_per_task, num_classes_distractor=0,
+                 target_transform=None,
                  dataset_transform=None):
         if not isinstance(num_classes_per_task, int):
             raise TypeError('Unknown type for `num_classes_per_task`. Expected '
@@ -248,9 +249,9 @@ class CombinationMetaDataset(MetaDataset):
         self.dataset = dataset   # if mnist, then MNIST_ClassDataset
         self.task_generate_method = task_generate_method   # add for different task generating methods
         self.num_classes_per_task = num_classes_per_task
-        # If no target_transform, then use a default target transform that
-        # is well behaved for the `default_collate` function (assign class
-        # augmentations ot integers).
+        self.num_classes_distractor = num_classes_distractor
+        # If no target_transform, then use a default target transform that is
+        # well behaved for the `default_collate` function (assign class augmentations ot integers).
         if target_transform is None:
             target_transform = DefaultTargetTransform(dataset.class_augmentations)
 
@@ -261,12 +262,11 @@ class CombinationMetaDataset(MetaDataset):
 
     def __iter__(self):
         num_classes = len(self.dataset)
-        for index in combinations(num_classes, self.num_classes_per_task):
+        for index in combinations(num_classes, self.num_classes_per_task+self.num_classes_distractor):
             yield self[index]
 
     def sample_task(self):
-        index = self.np_random.choice(len(self.dataset),
-            size=self.num_classes_per_task, replace=False)
+        index = self.np_random.choice(len(self.dataset), size=self.num_classes_per_task, replace=False)
         return self[tuple(index)]
 
     def __getitem__(self, index):
@@ -277,57 +277,50 @@ class CombinationMetaDataset(MetaDataset):
                              '(got `{2}`).'.format(', '.join([str(idx)
                                                               for idx in range(self.num_classes_per_task)]),
                                                    self.num_classes_per_task - 1, index))
-        assert len(index) == self.num_classes_per_task
-        datasets = [self.dataset[i] for i in index] #selected classes (including all samples) for one task
-        # Use deepcopy on `Categorical` target transforms, to avoid any side
-        # effect across tasks.
-
+        assert len(index) == self.num_classes_per_task + self.num_classes_distractor
         # index is the selected classes for the specific task.
-        # print(f"\n^^^^^^^^^^^^^^ The selected classes indices: {index}")   # todo: note, used for debug
+        # print(f"\n^^^^^^^^^^^^^^dataset_meta: The selected classes indices: {index}")   # todo: note, used for debug
+        index_ID = index[:self.num_classes_per_task]
+        # selected classes (including all samples) for one task
+        datasets = [self.dataset[i] for i in index_ID]  #todo: check the self problem in the miniimagenet_meta line 152
         task = ConcatTask(datasets, self.num_classes_per_task,
                           target_transform=wrap_transform(self.target_transform,
                                                           self._copy_categorical, transform_type=Categorical))
 
-        if self.task_generate_method == "woDistractor":   # TODO: it's also good to add the ratio here
+        if self.task_generate_method == "woDistractor":
             if self.dataset_transform is not None:
-                task = self.dataset_transform(task)
+                task_generated = self.dataset_transform(task)
+
+        elif self.task_generate_method == "distractor":
+            assert self.num_classes_distractor > 0
+            index_distractor = index[self.num_classes_per_task:]
+            datasets_distractor = [self.dataset[i] for i in index_distractor]
+            task_dist = ConcatTask(datasets_distractor, self.num_classes_distractor,
+                                   target_transform=wrap_transform(self.target_transform, self._copy_categorical,
+                                                                   transform_type=Categorical))
+            # todo: check the self._copy_categorical when the num_classes_distractor is not the same as num_ways
+            task_generated = self.dataset_transform(task, task_dist)
+
+
         elif self.task_generate_method == "random":
             # ####### this is for random selection
-            # todo: rewrite this part to log the label info of unlabeled data
-            # todo: two parts: labeled, unlabeled as the input of self.dataset_transform()
-
             if self.dataset_transform is not None:
                 dataset_all = [self.dataset[i] for i in range(len(self.dataset))]
                 dataset_all_class = ConcatTask(dataset_all, len(dataset_all),
                                                target_transform=wrap_transform(Categorical(len(dataset_all)),
                                                                                self._copy_categorical,
                                                                                transform_type=Categorical))
-                task = self.dataset_transform(task, dataset_all_class, index)
+                task_generated = self.dataset_transform(task, dataset_all_class, index)
             # ####### end
 
-        elif self.task_generate_method == "all_ood":
-            # ####### this is for All OOD selection todo: modify it back later
-            if self.dataset_transform is not None:
-                dataset_all = []
-                for i in range(len(self.dataset)):
-                    if i not in index:
-                        dataset_all.append(self.dataset[i])
-                # dataset_all = [self.dataset[i] for i in range(len(self.dataset))]
-                dataset_all_class = ConcatTask(dataset_all, len(dataset_all),
-                                               target_transform=wrap_transform(Categorical(len(dataset_all)),
-                                                                               self._copy_categorical,
-                                                                               transform_type=Categorical))
-                task = self.dataset_transform(task, dataset_all_class, index)
-            # ####### end
-
-        return task
+        return task_generated
 
     def _copy_categorical(self, transform):
         assert isinstance(transform, Categorical)
         transform.reset()
         if transform.num_classes is None:
             transform.num_classes = self.num_classes_per_task
-        return deepcopy(transform)
+        return deepcopy(transform)   # Use deepcopy on `Categorical` target transforms, to avoid any side effect across tasks.
 
     def __len__(self):
         num_classes, length = len(self.dataset), 1

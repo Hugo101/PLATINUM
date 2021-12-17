@@ -9,7 +9,7 @@ from datasets_meta.miniimagenet_meta import MiniImagenet
 from datasets_meta.mnist_meta import MNIST_meta
 from datasets_meta.SVHN_meta import SVHN_meta
 from datasets_meta.tieredimagenet_meta import TieredImagenet
-from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterComUnlabel
+from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterDist, ClassSplitterComUnlabel
 
 from maml.model import ModelConvOmniglot, ModelConvMiniImagenet, ModelConvSVHN, ModelMLPSinusoid
 from maml.utils import ToTensor1D
@@ -24,51 +24,52 @@ def get_benchmark_by_name(name,
                           num_ways,
                           num_shots,
                           num_shots_test,
-                          num_shots_unlabel,
-                          num_shots_unlabel_evaluate,
-                          num_unlabel_total,
-                          num_unlabel_total_evaluate,
+                          num_shots_unlabel,            # with and without distractor
+                          num_shots_unlabel_eval,       # with and without distractor
+                          num_classes_distractor,       # with distractor
+                          num_shots_distractor,         # with distractor
+                          num_shots_distractor_eval,    # with distractor
+                          num_unlabeled_total,
+                          num_unlabeled_total_evaluate,
                           hidden_size=None):
     # several task generating methods: "woDistractor"(proof of concept), "random" (baseline)
     dataset_transform, dataset_transform_evaluate = None, None
     if task_generate_method == "woDistractor":
+        assert num_shots_distractor == 0 and num_classes_distractor == 0 and num_shots_distractor_eval == 0
         dataset_transform = ClassSplitter(shuffle=True,
                                           num_train_per_class=num_shots,
                                           num_test_per_class=num_shots_test,
-                                          num_unlabel_per_class=num_shots_unlabel)
+                                          num_unlabeled_per_class=num_shots_unlabel)
 
         dataset_transform_evaluate = ClassSplitter(shuffle=True,                 # make it to be false to debug
                                                    num_train_per_class=num_shots,
                                                    num_test_per_class=num_shots_test,
-                                                   num_unlabel_per_class=num_shots_unlabel_evaluate)
+                                                   num_unlabeled_per_class=num_shots_unlabel_eval)
+
+    elif task_generate_method == "distractor":
+        assert num_classes_distractor > 0 and num_shots_distractor > 0 and num_shots_distractor_eval > 0
+        dataset_transform = ClassSplitterDist(shuffle=True,
+                                              num_train_per_class=num_shots,
+                                              num_test_per_class=num_shots_test,
+                                              num_unlabeled_per_class=num_shots_unlabel,
+                                              num_unlabel_OOD_per_class=num_shots_distractor)
+
+        dataset_transform_evaluate = ClassSplitterDist(shuffle=True,                 # make it to be false to debug
+                                                       num_train_per_class=num_shots,
+                                                       num_test_per_class=num_shots_test,
+                                                       num_unlabeled_per_class=num_shots_unlabel_eval,
+                                                       num_unlabel_OOD_per_class=num_shots_distractor_eval)
 
     elif task_generate_method == "random":
         dataset_transform = ClassSplitterComUnlabel(shuffle=True,
                                                     num_train_per_class=num_shots,
                                                     num_test_per_class=num_shots_test,
-                                                    num_unlabel_total = num_unlabel_total)
+                                                    num_unlabeled_total=num_unlabeled_total)
 
         dataset_transform_evaluate = ClassSplitterComUnlabel(shuffle=True,       # make it to be false to debug
                                                              num_train_per_class=num_shots,
                                                              num_test_per_class=num_shots_test,
-                                                             num_unlabel_total = num_unlabel_total_evaluate)
-
-    elif task_generate_method == "allOOD":
-        dataset_transform = ClassSplitterComUnlabel(shuffle=True,
-                                                    num_train_per_class=num_shots,
-                                                    num_test_per_class=num_shots_test,
-                                                    num_unlabel_total = num_unlabel_total)
-
-        dataset_transform_evaluate = ClassSplitterComUnlabel(shuffle=False,
-                                                             num_train_per_class=num_shots,
-                                                             num_test_per_class=num_shots_test,
-                                                             num_unlabel_total = num_unlabel_total_evaluate)
-
-    # elif task_generate_method == "subset":
-    #     '''
-    #     add the subset selection method regarding how to sample tasks (especially the unlabeled set)
-    #     '''
-    #     pass
+                                                             num_unlabeled_total=num_unlabeled_total_evaluate)
 
     if name == 'miniimagenet':
         transform = Compose([Resize(84), ToTensor()])
@@ -78,6 +79,7 @@ def get_benchmark_by_name(name,
                                           transform=transform,
                                           target_transform=Categorical(num_ways),
                                           num_classes_per_task=num_ways,
+                                          num_classes_distractor=num_classes_distractor,
                                           meta_train=True,
                                           dataset_transform=dataset_transform,
                                           download=True)
@@ -86,6 +88,7 @@ def get_benchmark_by_name(name,
                                           transform=transform,
                                           target_transform=Categorical(num_ways),
                                           num_classes_per_task=num_ways,
+                                          num_classes_distractor=num_classes_distractor,
                                           meta_val=True,
                                           dataset_transform=dataset_transform_evaluate)
         meta_test_dataset  = MiniImagenet(folder,
@@ -93,6 +96,7 @@ def get_benchmark_by_name(name,
                                           transform=transform,
                                           target_transform=Categorical(num_ways),
                                           num_classes_per_task=num_ways,
+                                          num_classes_distractor=num_classes_distractor,
                                           meta_test=True,
                                           dataset_transform=dataset_transform_evaluate)
 
@@ -103,27 +107,27 @@ def get_benchmark_by_name(name,
         transform = Compose([Resize(84), ToTensor()])
 
         meta_train_dataset = TieredImagenet(folder,
-                                          task_generate_method,
-                                          transform=transform,
-                                          target_transform=Categorical(num_ways),
-                                          num_classes_per_task=num_ways,
-                                          meta_train=True,
-                                          dataset_transform=dataset_transform,
-                                          download=True)
+                                            task_generate_method,
+                                            transform=transform,
+                                            target_transform=Categorical(num_ways),
+                                            num_classes_per_task=num_ways,
+                                            meta_train=True,
+                                            dataset_transform=dataset_transform,
+                                            download=True)
         meta_val_dataset   = TieredImagenet(folder,
-                                          task_generate_method,
-                                          transform=transform,
-                                          target_transform=Categorical(num_ways),
-                                          num_classes_per_task=num_ways,
-                                          meta_val=True,
-                                          dataset_transform=dataset_transform_evaluate)
+                                            task_generate_method,
+                                            transform=transform,
+                                            target_transform=Categorical(num_ways),
+                                            num_classes_per_task=num_ways,
+                                            meta_val=True,
+                                            dataset_transform=dataset_transform_evaluate)
         meta_test_dataset  = TieredImagenet(folder,
-                                          task_generate_method,
-                                          transform=transform,
-                                          target_transform=Categorical(num_ways),
-                                          num_classes_per_task=num_ways,
-                                          meta_test=True,
-                                          dataset_transform=dataset_transform_evaluate)
+                                            task_generate_method,
+                                            transform=transform,
+                                            target_transform=Categorical(num_ways),
+                                            num_classes_per_task=num_ways,
+                                            meta_test=True,
+                                            dataset_transform=dataset_transform_evaluate)
 
         model = ModelConvMiniImagenet(num_ways, hidden_size=hidden_size) # todo: check
         loss_function = F.cross_entropy

@@ -3,15 +3,13 @@ import numpy as np
 import random
 from collections import OrderedDict, defaultdict
 # from torchmeta.utils.data.task import Task, ConcatTask, SubsetTask
-from task_meta import Task, ConcatTask, SubsetTask, SubsetTask_unlabel
+from task_meta import Task, ConcatTask, SubsetTask, SubsetCombine, SubsetTask_unlabel
 from torchmeta.transforms.utils import apply_wrapper
-import sys
-# sys.path.append("../")
+
 from configuration import arg_parser
 args = arg_parser.parse_args()
 
-__all__ = ['Splitter', 'ClassSplitter']
-# __all__ = ['Splitter', 'ClassSplitter', 'WeightedClassSplitter']
+__all__ = ['Splitter', 'ClassSplitter', 'ClassSplitterDist', 'ClassSplitterComUnlabel']
 
 RATIO_LABELED = args.ratio
 print("~~~~~~~~~~~~~~~~~~ Splitting ratio of labeled samples:", RATIO_LABELED)
@@ -31,8 +29,7 @@ class Splitter(object):
         elif isinstance(task, Task):
             indices = self.get_indices_task(task)
         else:
-            raise ValueError('The task must be of type `ConcatTask` or `Task`, '
-                'Got type `{0}`.'.format(type(task)))
+            raise ValueError('The task must be of type `ConcatTask` or `Task`, Got type `{0}`.'.format(type(task)))
         return indices
 
     def get_indices_task(self, task):
@@ -72,8 +69,7 @@ class Splitter(object):
         # print(f"^^^^^^^^^^ The selected sample indices for this task in query set: {indices['test']}")
         # print(f"^^^^^^^^^^ The selected sample indices for this task in unlabeled set: {indices['unlabeled']}")
         # ####
-        return OrderedDict([(split, SubsetTask(task, indices[split]))
-            for split in self.splits])
+        return OrderedDict([(split, SubsetTask(task, indices[split])) for split in self.splits])
 
     def __len__(self):
         return len(self.splits)
@@ -81,8 +77,7 @@ class Splitter(object):
 
 class ClassSplitter_(Splitter):
     def __init__(self, shuffle=True, num_samples_per_class=None,
-                 num_train_per_class=None, num_test_per_class=None, num_unlabel_per_class=None,
-                 num_support_per_class=None, num_query_per_class=None,
+                 num_train_per_class=None, num_test_per_class=None, num_unlabeled_per_class=None,
                  random_state_seed=0):
         """
         Transforms a dataset into train/test splits for few-shot learning tasks,
@@ -111,16 +106,6 @@ class ClassSplitter_(Splitter):
             Number of samples per class in the test split. If not `None`, this
             creates an item `test` for each task.
 
-        num_support_per_class : int, optional
-            Alias for `num_train_per_class`. If `num_train_per_class` is not
-            `None`, then this argument is ignored. If not `None`, this creates
-            an item `support` for each task.
-
-        num_query_per_class : int, optional
-            Alias for `num_test_per_class`. If `num_test_per_class` is not
-            `None`, then this argument is ignored. If not `None`, this creates
-            an item `query` for each task.
-
         random_state_seed : int, optional
             seed of the np.RandomState. Defaults to '0'.
 
@@ -132,14 +117,10 @@ class ClassSplitter_(Splitter):
             num_samples_per_class = OrderedDict()
             if num_train_per_class is not None:
                 num_samples_per_class['train'] = num_train_per_class
-            elif num_support_per_class is not None:
-                num_samples_per_class['support'] = num_support_per_class
             if num_test_per_class is not None:
                 num_samples_per_class['test'] = num_test_per_class
-            elif num_query_per_class is not None:
-                num_samples_per_class['query'] = num_query_per_class
-            if num_unlabel_per_class is not None:                          #new added
-                num_samples_per_class['unlabeled'] = num_unlabel_per_class   #new added
+            if num_unlabeled_per_class is not None:                          #new added
+                num_samples_per_class['unlabeled'] = num_unlabeled_per_class   #new added
 
         assert len(num_samples_per_class) > 0
 
@@ -207,47 +188,161 @@ class ClassSplitter_(Splitter):
                     ptr += num_split
                 else:
                     if num_split > 0:   # the num of unlabeled samples is nonzero
-                        # TODO: this part might not be useful for randomly selection of unlabeled samples
-                        split_indices_unlabeled = dataset_indices_unlabeled[0:num_split]
+                        split_indices_unlabeled = dataset_indices_unlabeled[0 : num_split]
                         if self.shuffle:
                             self.np_random.shuffle(split_indices_unlabeled)
                         indices[split].extend(split_indices_unlabeled + cum_size)
 
             cum_size += num_samples_total
-
         return indices
 
-def ClassSplitter(task=None, *args, **kwargs):
-    return apply_wrapper(ClassSplitter_(*args, **kwargs), task)
+# def ClassSplitter(task=None, *args, **kwargs):
+#     return apply_wrapper(ClassSplitter_(*args, **kwargs), task)
 
-# def divide_random(total, div):
-#     '''
-#     split the total number samples"total" into several bins, and the sum of samples in all bins is "total"
-#     each bin has at least 1 sample
-#     for example:
-#     print(divide_random(6, 3))
-#     output: [4,1,1]
-#     '''
-#     internal_points = random.sample(range(1, total), div - 1)
-#     internal_points_sorted = sorted(internal_points)
-#     num_per_interval = []
-#     for i in range(len(internal_points)):
-#         if i == 0:
-#             num_per_interval.append(internal_points_sorted[i])
-#         else:
-#             num_per_interval.append(internal_points_sorted[i] - internal_points_sorted[i - 1])
-#
-#     num_per_interval.append(total - internal_points_sorted[-1])
-#
-#     assert sum(num_per_interval) == total
-#     return num_per_interval
+def ClassSplitter(*args, **kwargs):
+    return ClassSplitter_(*args, **kwargs)
+
+
+class ClassSplitterDist(object):
+    def __init__(self, shuffle=True, splits=None,
+                 num_train_per_class=None, num_test_per_class=None, num_unlabeled_per_class=None,
+                 num_unlabel_OOD_per_class=None,
+                 random_state_seed=0):
+        '''
+        dataset transform to generate task with distractor classes
+        '''
+        self.splits = splits
+        self.num_distractors_per_class = num_unlabel_OOD_per_class
+        self.random_state_seed = random_state_seed
+        self.seed(random_state_seed)
+
+        self.shuffle = shuffle
+        if splits is None:
+            self.splits = OrderedDict()
+            if num_train_per_class is not None:
+                self.splits['train'] = num_train_per_class
+            if num_test_per_class is not None:
+                self.splits['test'] = num_test_per_class
+            if num_unlabeled_per_class is not None:
+                self.splits['unlabeled'] = num_unlabeled_per_class
+
+
+        assert len(self.splits) > 0
+        self._min_samples_per_class = sum(self.splits.values())
+
+    def __call__(self, task_ID, task_distractor):
+        '''
+        to sample a task with distractor classes
+        :param task_ID: the concatenation of all examples of selected ID classes
+        :param task_distractor: the concatenation of all examples of selected OOD classes
+        :return: desired task
+        '''
+        indices = self.get_indices(task_ID)
+        indices_unlabeled_OOD = self.get_indices_concattask_OOD(task_distractor)
+
+        # ##### todo: note, used for debug
+        # print("^^^^^^^^^^ The selected classes indices: {}".format(index))
+        # print("^^^^^^^^^^ The selected sample indices for this task in support set: {}".format(indices['train']))
+        # print("^^^^^^^^^^ The selected sample indices for this task in query set: {}".format(indices['test']))
+        # print("^^^^^^^^^^ The selected sample indices for this task in unlabeled set: {}".format(indices['unlabeled']))
+
+        # #####
+        support_query_unlabel = OrderedDict()
+        for split in self.splits:
+            if "unlabeled" != split:  # support set and query set
+                support_query_unlabel[split] = SubsetTask(task_ID, indices[split])
+            else: # unlabeled set (ID classes, and distractor classes)
+                support_query_unlabel[split] = SubsetCombine(task_ID, indices[split], task_distractor, indices_unlabeled_OOD)
+
+        return support_query_unlabel
+
+    def get_indices(self, task):
+        if isinstance(task, ConcatTask):
+            indices = self.get_indices_concattask(task)
+        else:
+            raise ValueError("The task must be of type `ConcatTask`, Got type `{0}`.".format(type(task)))
+        return indices
+
+    def get_indices_concattask(self, task):
+        indices = OrderedDict([(split, []) for split in self.splits])
+        cum_size = 0
+        for dataset in task.datasets:  # task.datasets is the samples of selected classes
+            num_samples_total = len(dataset)  # total num of samples for one class, i.e., 600 for miniimagenet
+
+            # num of labeled samples, i.e., 600*0.4=240, the rest are unlabeled
+            num_samples_labeled = int(num_samples_total * RATIO_LABELED)
+            if num_samples_total < self._min_samples_per_class:
+                raise ValueError('The number of samples for one class ({0}) '
+                                 'is smaller than the minimum number of samples per class '
+                                 'required by `ClassSplitter` ({1}).'.format(num_samples_total,
+                                                                             self._min_samples_per_class))
+
+            if self.shuffle:
+                seed = (hash(task) + hash(dataset) + self.random_state_seed) % (2 ** 32)
+                dataset_indices = np.random.RandomState(seed).permutation(num_samples_labeled)  # 240
+                dataset_indices_unlabeled = np.random.RandomState(seed).permutation(
+                    num_samples_total - num_samples_labeled) + num_samples_labeled  # 360
+            else:
+                dataset_indices = np.arange(num_samples_labeled)
+                dataset_indices_unlabeled = np.arange(num_samples_labeled, num_samples_total, 1)
+
+            ptr = 0
+            for split, num_split in self.splits.items():
+                if split != 'unlabeled':
+                    split_indices = dataset_indices[ptr:ptr + num_split]
+                    if self.shuffle:
+                        self.np_random.shuffle(split_indices)
+                    indices[split].extend(split_indices + cum_size)
+                    ptr += num_split
+                else:
+                    if num_split > 0:  # the num of unlabeled samples is nonzero
+                        split_indices_unlabeled = dataset_indices_unlabeled[0: num_split]
+                        if self.shuffle:
+                            self.np_random.shuffle(split_indices_unlabeled)
+                        indices[split].extend(split_indices_unlabeled + cum_size)
+
+            cum_size += num_samples_total
+        return indices
+
+
+    def get_indices_concattask_OOD(self, task):
+        '''
+        get the indices for distractor examples in the unlabeled set
+        :param task: the concatenation of all samples of selected classes (distractor)
+        :return: indices
+        '''
+        indices = []
+        cum_size = 0
+        # 1. find the potential indices
+        for dataset in task.datasets:               # task.datasets is the selected classes
+            num_samples_total = len(dataset)        # total num of samples for one class, i.e., 600 for miniimagenet
+            num_samples_labeled = int(num_samples_total * RATIO_LABELED) # num of labeled samples, i.e., 600*0.4=240
+
+            if self.shuffle:
+                seed = (hash(task) + hash(dataset) + self.random_state_seed) % (2 ** 32)
+                dataset_indices_unlabeled = np.random.RandomState(seed).permutation(
+                    np.arange(num_samples_labeled, num_samples_total, 1))
+            else:
+                dataset_indices_unlabeled = np.arange(num_samples_labeled, num_samples_total, 1)
+
+            # for each class, select unlabeled distractor examples
+            split_indices_unlabeled = dataset_indices_unlabeled[0: self.num_distractors_per_class]
+            if self.shuffle:
+                self.np_random.shuffle(split_indices_unlabeled)
+            indices.extend(split_indices_unlabeled+cum_size)
+
+            cum_size += num_samples_total # jump to next class
+        return indices
+
+    def seed(self, seed):
+        self.np_random = np.random.RandomState(seed=seed)
+
 
 # the other splitting methods for unlabeled samples.
 # 1) all unlabeled samples are a set. For each task, we select some unlabeled samples from this total unlabeled set.
 class ClassSplitterComUnlabel(object):
     def __init__(self, shuffle=True, splits=None,
-                 num_train_per_class=None, num_test_per_class=None, num_unlabel_total=None,
-                 num_support_per_class=None, num_query_per_class=None,
+                 num_train_per_class=None, num_test_per_class=None, num_unlabeled_total=None,
                  random_state_seed=0):
         '''
         Transforms a dataset into support/query/unlabeled splits for semi supervised few-shot learning tasks,
@@ -273,14 +368,12 @@ class ClassSplitterComUnlabel(object):
             self.splits = OrderedDict()
             if num_train_per_class is not None:
                 self.splits['train'] = num_train_per_class
-            elif num_support_per_class is not None:
-                self.splits['support'] = num_support_per_class
+
             if num_test_per_class is not None:
                 self.splits['test'] = num_test_per_class
-            elif num_query_per_class is not None:
-                self.splits['query'] = num_query_per_class
-            if num_unlabel_total is not None:
-                self.splits['unlabeled'] = num_unlabel_total
+
+            if num_unlabeled_total is not None:
+                self.splits['unlabeled'] = num_unlabeled_total
 
         assert len(self.splits) > 0
 
@@ -294,9 +387,9 @@ class ClassSplitterComUnlabel(object):
         indices, ratio_ID_class, indices_OOD = self.get_indices(task, dataset_class, index)
 
         # ##### todo: note, used for debug
-        # print("^^^^^^^^^^ The selected classes indices: {}".format(index))
-        # print("^^^^^^^^^^ The selected sample indices for this task in support set: {}".format(indices['train']))
-        # print("\n********** The ratio of ID samples in the selected unlabeled set:{:.4f}".format(ratio_ID_class))
+        print("^^^^^^^^^^ The selected classes indices: {}".format(index))
+        print("^^^^^^^^^^ The selected sample indices for this task in support set: {}".format(indices['train']))
+        print("\n********** The ratio of ID samples in the selected unlabeled set:{:.4f}".format(ratio_ID_class))
         # #####
         # support_query = OrderedDict([(split, SubsetTask(task, indices[split])) for split in self.splits])
         support_query_unlabel = OrderedDict()
@@ -326,76 +419,6 @@ class ClassSplitterComUnlabel(object):
         return indices, ratio_ID_class, indices_OOD
 
 
-    def get_indices_concattask_all_OOD(self, task, dataset_class):
-        '''
-        get the indices for support set, query set, and unlabeled set
-        :param task: the concatenation of all samples of selected classes
-        :param dataset_class: the transformed dataset, for example, MNIST_ClassDataset
-        :index:
-        :return: indices
-        '''
-        indices = OrderedDict([(split, []) for split in self.splits])
-        cum_size = 0
-        # 1. labeled part: support set and query set
-        for dataset in task.datasets:           # task.datasets is the selected classes
-            num_samples_total = len(dataset)    # total num of samples for one class, i.e., 600 for miniimagenet
-
-            # num of labeled samples, i.e., 600*0.4=240, the rest are unlabeled
-            num_samples_labeled = int(num_samples_total * RATIO_LABELED)
-
-            if self.shuffle:
-                seed = (hash(task) + hash(dataset) + self.random_state_seed) % (2 ** 32)
-                dataset_indices_labeled = np.random.RandomState(seed).permutation(num_samples_labeled)  # 240 if 0.4*600
-            else:
-                dataset_indices_labeled = np.arange(num_samples_labeled)
-
-            ptr = 0
-            for split, num_split in self.splits.items():
-                if "unlabel" in split:
-                    continue
-                else:
-                    split_indices = dataset_indices_labeled[ptr : ptr+num_split]
-                    if self.shuffle:
-                        self.np_random.shuffle(split_indices)
-                    indices[split].extend(split_indices+cum_size)
-                    ptr += num_split
-            cum_size += num_samples_total
-
-        # 2. unlabeled part
-        # 1) correct version
-        key_unlabel = 'unlabeled'
-        # #######
-        total_unlabel_list = []
-        # total_unlabel_ID_list = []
-        cum_size_unlabel = 0
-        for i in range(len(dataset_class.datasets)):
-            dataset = dataset_class.datasets[i]
-            num_samples_total = len(dataset)
-            num_samples_labeled = int(num_samples_total * RATIO_LABELED)
-            if self.shuffle:
-                seed = (hash(dataset) + self.random_state_seed) % (2 ** 32)
-                dataset_indices_unlabeled = np.random.RandomState(seed).permutation(
-                    num_samples_total - num_samples_labeled) + num_samples_labeled
-            else:
-                dataset_indices_unlabeled = np.arange(num_samples_labeled, num_samples_total, 1)
-            total_unlabel_list.extend((dataset_indices_unlabeled + cum_size_unlabel))
-            # if i in index:
-            #     total_unlabel_ID_list.extend(dataset_indices_unlabeled + cum_size_unlabel)
-
-            cum_size_unlabel += num_samples_total
-
-        # randomly select the unlabeled set from the pool of total unlabeled samples
-        unlabel_selected = random.sample(total_unlabel_list, self.splits[key_unlabel])
-        indices[key_unlabel] = unlabel_selected
-
-        # ## calculate the common element, namely the number of samples of ID classes.
-        # common_num = len(set(total_unlabel_ID_list).intersection(set(unlabel_selected)))
-        # ########
-
-
-        return indices, None
-
-
     def get_indices_concattask(self, task, dataset_class, index):
         '''
         get the indices for support set, query set, and unlabeled set
@@ -418,9 +441,9 @@ class ClassSplitterComUnlabel(object):
                 dataset_indices_labeled = np.random.RandomState(seed).permutation(num_samples_labeled)  # 240 if 0.4*600
             else:
                 dataset_indices_labeled = np.arange(num_samples_labeled)
-
+            # for each class, select support examples and query examples
             ptr = 0
-            for split, num_split in self.splits.items():
+            for split, num_split in self.splits.items(): # train: 5, test: 15, unlabeled: 100
                 if "unlabel" in split:
                     continue
                 else:
@@ -429,7 +452,7 @@ class ClassSplitterComUnlabel(object):
                         self.np_random.shuffle(split_indices)
                     indices[split].extend(split_indices+cum_size)
                     ptr += num_split
-            cum_size += num_samples_total
+            cum_size += num_samples_total # jump to next class
 
         # 2. unlabeled part
         # 1) correct version
@@ -438,7 +461,7 @@ class ClassSplitterComUnlabel(object):
         total_unlabel_list = []
         total_unlabel_ID_list = []
         cum_size_unlabel = 0
-        for i in range(len(dataset_class.datasets)):
+        for i in range(len(dataset_class.datasets)):  # total number of classes
             dataset = dataset_class.datasets[i]
             num_samples_total = len(dataset)
             num_samples_labeled = int(num_samples_total * RATIO_LABELED)
@@ -462,51 +485,6 @@ class ClassSplitterComUnlabel(object):
         common_num = len(set(total_unlabel_ID_list).intersection(set(unlabel_selected)))
 
         indices_OOD = list(set(unlabel_selected) - set(total_unlabel_ID_list))
-        # #######
-
-        # # 2) the other version
-        # # divide the total number of selected unlabeled samples into different numbers for each available class
-        # num_unlabel_split = divide_random(self.splits[key_unlabel], len(dataset_class.datasets))
-        # assert sum(num_unlabel_split) == self.splits[key_unlabel]
-        # total_unlabel_ID_list = []
-        # cum_size_unlabel = 0
-        # for i in range(len(dataset_class.datasets)):
-        #     dataset = dataset_class.datasets[i]
-        #     num_samples_total = len(dataset)
-        #     num_samples_labeled = int(num_samples_total * RATIO_LABELED)
-        #     if self.shuffle:
-        #         seed = (hash(dataset) + self.random_state_seed) % (2 ** 32)
-        #         dataset_indices_unlabeled = np.random.RandomState(seed).permutation(num_samples_total - num_samples_labeled) + num_samples_labeled
-        #     else:
-        #         dataset_indices_unlabeled = np.arange(num_samples_labeled, num_samples_total, 1)
-        #     split_indices_unlabeled = dataset_indices_unlabeled[0:num_unlabel_split[i]]
-        #     if self.shuffle:
-        #         self.np_random.shuffle(split_indices_unlabeled)
-        #     indices[key_unlabel].extend(split_indices_unlabeled + cum_size_unlabel)
-        #
-        #     if i in index:
-        #         total_unlabel_ID_list.extend(dataset_indices_unlabeled + cum_size_unlabel)
-        #
-        #     cum_size_unlabel += num_samples_total
-        #
-        #
-        # # calculate the common element, namely the number of samples of ID classes.
-        # unlabel_selected = indices[key_unlabel]
-        # common_num = len(set(total_unlabel_ID_list).intersection(set(unlabel_selected)))
-        # Method 2
-        # for i in range(len(dataset_class)):
-        #     dataset = dataset_class[i]
-        #     num_samples_total = len(dataset)
-        #     num_samples_labeled = int(num_samples_total * RATIO_LABELED)
-        #     if self.shuffle:
-        #         seed = (hash(dataset) + self.random_state_seed) % (2 ** 32)
-        #         dataset_indices_unlabeled = np.random.RandomState(seed).permutation(num_samples_total - num_samples_labeled)+num_samples_labeled
-        #     else:
-        #         dataset_indices_unlabeled = np.arange(num_samples_labeled, num_samples_total, 1)
-        #     split_indices_unlabeled = dataset_indices_unlabeled[0:num_unlabel_split[i]]
-        #     if self.shuffle:
-        #         self.np_random.shuffle(split_indices_unlabeled)
-        #     indices[key_unlabel].append(split_indices_unlabeled)
 
         return indices, common_num/self.splits[key_unlabel], indices_OOD
 

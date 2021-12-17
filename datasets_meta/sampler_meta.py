@@ -41,5 +41,6 @@ class CombinationRandomSampler(RandomSampler):
     def __iter__(self):
         num_classes = len(self.data_source.dataset)
         num_classes_per_task = self.data_source.num_classes_per_task
+        num_classes_distractor = self.data_source.num_classes_distractor
         for _ in combinations(range(num_classes), num_classes_per_task):
-            yield tuple(random.sample(range(num_classes), num_classes_per_task))
+            yield tuple(random.sample(range(num_classes), num_classes_per_task+num_classes_distractor))

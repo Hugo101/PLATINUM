@@ -41,6 +41,9 @@ def maml_ssl_main(args, device):
                                       args.num_shots_test,        # shots in query set
                                       args.num_shots_unlabeled,   # num of unlabeled images for meta-train tasks
                                       args.num_shots_unlabeled_evaluate,  # num of unlabeled images per class
+                                      args.num_classes_distractor,     # with distractor
+                                      args.num_shots_distractor,       # with distractor
+                                      args.num_shots_distractor_eval,  # with distractor
                                       args.num_unlabel_total,           # for "random"
                                       args.num_unlabel_total_evaluate,  # for "random"
                                       hidden_size=args.hidden_size)
@@ -99,6 +102,7 @@ def maml_ssl_main(args, device):
                                    "mean_loss_tst": [],
                                    "mean_accu_tst": []}   # loss and accu of query set from meta-validation
     # Training loop
+    epoch_desc_train = 'Epoch {{0: <{0}d}} (meta-train)'.format(1 + int(math.log10(args.num_epochs)))
     epoch_desc_val = 'Epoch {{0: <{0}d}} (meta-valid)'.format(1 + int(math.log10(args.num_epochs)))
     epoch_desc_tst = 'Epoch {{0: <{0}d}} (meta-test)'.format(1 + int(math.log10(args.num_epochs)))
     for epoch in range(args.num_epochs):
@@ -108,7 +112,7 @@ def maml_ssl_main(args, device):
                                              batch_size=args.batch_size,
                                              verbose=args.verbose,
                                              progress=epoch + 1,
-                                             desc='Training',
+                                             desc=epoch_desc_train.format(epoch + 1),
                                              )
         results_train = cat_data(results_train, result_train_per_epoch)
 
@@ -119,7 +123,7 @@ def maml_ssl_main(args, device):
                                                                            max_batches=args.num_batches,
                                                                            batch_size=args.batch_size_val,
                                                                            verbose=args.verbose,
-                                                                           progress=epoch,
+                                                                           progress=epoch + 1,
                                                                            desc=epoch_desc_val.format(epoch + 1))
             results_valid = append_data(results_valid, results_all_tasks_val)
             results_mean_val_tst_epochs["mean_loss_val"].append(results_mean_val['mean_outer_loss'])
@@ -132,7 +136,7 @@ def maml_ssl_main(args, device):
                                                                                max_batches=args.num_batches,
                                                                                batch_size=args.batch_size_test,
                                                                                verbose=args.verbose,
-                                                                               progress=epoch,
+                                                                               progress=epoch + 1,
                                                                                desc=epoch_desc_tst.format(epoch + 1))
                 results_test = append_data(results_test, results_all_tasks_tst)
                 results_mean_val_tst_epochs["mean_loss_tst"].append(results_mean_tst['mean_outer_loss'])

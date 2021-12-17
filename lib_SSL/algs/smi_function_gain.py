@@ -180,29 +180,27 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
 
     # intermediate results
     num_unlabeled_select = gt_mask.sum(0)
-    if scenario == "random":
-        # ==== for OOD randomly selection
-        num_oods = (unlabeled_targets == -1).sum(dim=0)
-        num_unlabeled = len(unlabeled_targets)
+    if scenario == "distractor":
+
+        # num_oods = (unlabeled_targets == -1).sum(dim=0)
+        # num_unlabeled = len(unlabeled_targets)
         labels_unlabeled_select = unlabeled_targets * gt_mask
         num_oods_select = (labels_unlabeled_select == -1).sum(dim=0)
         ratio_ood = "{}/{}={:.4f}".format(num_oods_select, num_unlabeled_select, num_oods_select / num_unlabeled_select)
         if verbose:
-            print("\n=== OOD samples analysis:")
-            print("====== The ratio of OOD samples in the unlabeled set is: "
-                  "{}/{}={:.4f}.".format(num_oods, num_unlabeled, num_oods / num_unlabeled))
+            # print("\n=== OOD samples analysis:")
+            # print("====== The ratio of OOD samples in the unlabeled set is: "
+            #       "{}/{}={:.4f}.".format(num_oods, num_unlabeled, num_oods / num_unlabeled))
             print(f'====== The ratio of OOD samples in the selected unlabeled set is: {ratio_ood}')
         # ====
 
-    if scenario == "woDistractor":
+    if scenario in ["woDistractor", "distractor"]:         # does not work for random selection for now
         # ====== log the accuracy of selected samples
-        # todo: does not work for random selection for now
         selected_targets = unlabeled_targets[selected_idx]
         num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)
         accu_among_selected = num_selected_correct / num_unlabeled_select
         acc_slct = "{}/{}={:.4f}".format(num_selected_correct, num_unlabeled_select, accu_among_selected)
-        if verbose:
-            print(f"+++++ The accu in the selected samples: {acc_slct}")
+        print(f"+++++ The accu in the selected samples: {acc_slct}") if verbose else None
         # ======
 
     selected_unlabel_samples = unlabeled_inputs[selected_idx]
@@ -217,8 +215,8 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
     print("+++++ the SSL loss : {:.8f}.\n".format(loss_selected)) if verbose else None
     if scenario == "woDistractor":
         return loss_selected, 0, acc_slct
-    if scenario == "random":
-        return loss_selected, ratio_ood, None
+    if scenario == "distractor":
+        return loss_selected, ratio_ood, acc_slct
 
 
 def smi_pl_comb(support_inputs, support_targets,

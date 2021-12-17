@@ -4,7 +4,7 @@ arg_parser = argparse.ArgumentParser('MAML + SSL (SMI, PL, VAT and FixMatch(late
 
 # General
 arg_parser.add_argument('--seed', type=int, default=123)
-arg_parser.add_argument('--gpu_id', default=8, type=int,
+arg_parser.add_argument('--gpu_id', default=0, type=int,
                         help='GPU available. index of gpu, if <0 then use cpu')
 arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/miniimagenet_test',
                         help='Path to the folder the data is downloaded to.')
@@ -16,9 +16,10 @@ arg_parser.add_argument('--dataset', type=str, default='miniimagenet',
 arg_parser.add_argument('--ratio', type=float, default=0.4,
                         help='ratio of labeled for each class in the task.')
 
+
 # SSL Experimental Setting
-arg_parser.add_argument('--scenario', type=str, default="woDistractor",
-                        choices=["woDistractor", "random", "allOOD", "subset"],
+arg_parser.add_argument('--scenario', type=str, default="distractor",
+                        choices=["woDistractor", "distractor", "random" , "allOOD"],
                         help="Different SS FSL approaches, including subset selection and baselines")
 arg_parser.add_argument('--ssl_algo', type=str, default='SMI')  # "PL", "VAT", "SMI", "PLtopZ"
 arg_parser.add_argument('--selection_option', type=str, default='cross')  # "same", "cross", "union"
@@ -36,35 +37,39 @@ arg_parser.add_argument("--budget_q", type=int, default=75)  # for query set
 
 
 arg_parser.add_argument('--num_ways', type=int, default=5,
-                        help='Number of classes per task (N in "N-way", default: 3 for SVHN and MNIST, 5 for others).')
+                        help='Number of classes per task (N in "N-way").')
 arg_parser.add_argument('--num_shots', type=int, default=5,
-                        help='Number of examples per class for support set (k in "k-shot", default: 5).')
+                        help='Number of examples per class for support set (k in "k-shot").')
 arg_parser.add_argument('--num_shots_test', type=int, default=15,
-                        help='Number of examples per class for query set. If negative, same as the number '
-                             'of training examples `--num_shots` (default: 15).')
-# unlabeled part, for without distractor classes
-arg_parser.add_argument('--num_shots_unlabeled', type=int, default=100,
-                        help='Number of unlabeled example per class. If negative, same as the number '
-                             'of training examples `--num_shots`.')  # 200 for SVHN, 300 for MNIST, 20 for miniImagenet
-arg_parser.add_argument('--num_shots_unlabeled_evaluate', type=int, default=60,
-                        help='Number of unlabeled example per class. If negative, same as the number '
-                             'of training examples `--num_shots`.')  # 200 for SVHN, 300 for MNIST, 20 for miniImagenet
+                        help='Number of examples per class for query set. If negative, same as `--num_shots`(default:15).')
+
+# unlabeled part, for with and without distractor
+arg_parser.add_argument('--num_shots_unlabeled', type=int, default=50,
+                        help='Number of unlabeled example per class.')  # 200 for SVHN, 300 for MNIST, 20 for miniImagenet
+arg_parser.add_argument('--num_shots_unlabeled_evaluate', type=int, default=50,
+                        help='Number of unlabeled example per class during meta-validation/test.')  # 200 for SVHN, 300 for MNIST, 20 for miniImagenet
+# unlabeled part, Scenario: distractor.
+arg_parser.add_argument('--num_classes_distractor', type=int, default=0,
+                        help='Number of distractor classes.')
+arg_parser.add_argument('--num_shots_distractor', type=int, default=0,
+                        help='Number of unlabeled example per distractor class during meta-training.')
+arg_parser.add_argument('--num_shots_distractor_eval', type=int, default=0,
+                        help='Number of unlabeled example per distractor class during meta-validation/test.')
+
+
 # unlabeled part, for random selection
 arg_parser.add_argument('--num_unlabel_total', type=int, default=100,
                         help='Num of unlabeled examples totally for each task. (default: 600 for SVHN, 900 for MNIST).')
 arg_parser.add_argument('--num_unlabel_total_evaluate', type=int, default=100,
-                        help='Number of unlabeled examples totally for each task in evaluation. '
-                             '(default: 600 for SVHN, 900 for MNIST).')
+                        help='Number of unlabeled examples totally for each task during meta-validation/test.')
 
 # CNN Model
 arg_parser.add_argument('--hidden_size', type=int, default=64,
-                        help='Number of channels in each convolution layer of the VGG network '
-                             '(default: 64).')
+                        help='Number of channels in each convolution layer of the VGG network (default: 64).')
 
 # Optimization
 arg_parser.add_argument('--first_order', action='store_true',
-                        help='Use the first order approximation, do not use higher-order '
-                             'derivatives during meta-optimization.')
+                        help='Use the first order approximation, do not use higher-order derivatives during meta-optimization.')
 arg_parser.add_argument('--batch_size', type=int, default=1,
                         help='Number of tasks in a batch of tasks for meta-training.')
 arg_parser.add_argument('--batch_size_val', type=int, default=1,
@@ -91,9 +96,9 @@ arg_parser.add_argument('--num_steps_evaluate', type=int, default=10,
 
 # PL with threshold or top Z
 arg_parser.add_argument('--pl_threshold', type=float, default=0,
-                        help='The threshold used in the PL algorithm in the inner loop. Default is 0 in the SSL')
+                        help='The threshold used in the PL algorithm in the inner loop. (Default: 0)')
 arg_parser.add_argument('--pl_threshold_outer', type=float, default=0,
-                        help='The threshold used in the PL algorithm in the outer loop. Default is 0 in the SSL')
+                        help='The threshold used in the PL algorithm in the outer loop. (Default: 0)')
 arg_parser.add_argument("--pl_num_topz", type=int, default=25,
                         help='The number of examples which have top Z probability logits in the inner loop')
 arg_parser.add_argument("--pl_num_topz_outer", type=int, default=75,
