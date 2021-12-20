@@ -1,10 +1,12 @@
+# from MAML_SMI_version2.trust.trust.strategies.strategy import Strategy
 import torch.nn.functional as F
 from torch.utils.data import Subset
 from maml.utils import DatasetSMI
 from maml.utils import DatasetAugment
 from trust.trust.strategies.smi import SMI
+from trust.trust.strategies.strategy import Strategy
 from trust.trust.utils.utils import *
-
+import submodlib
 
 def remove_overlap(groups, groups_gains, groups_pseudolabels, budget_class, excluded_set):
     '''
@@ -129,21 +131,36 @@ def smi_function(support_inputs, support_targets,
     unlabeled_set = DatasetSMI(unlabel_inputs, unlabeled_targets)
     unlabeled_set = LabeledToUnlabeledDataset(unlabeled_set)
 
+    #compute embeddings of the unlabeled set out the class loop
+    strategy_obj = Strategy(train_set, unlabeled_set, model, num_cls, strategy_args)
+    unlabeled_data_embedding = strategy_obj.get_grad_embedding(unlabeled_set, True, "bias_linear")
+
     budget_all = int(strategy_args['budget']) + len(excluded_set)
     budget_per_class = int(strategy_args['budget'] / num_cls)
 
     select_idx = []      # indice of selected examples in the unlabeled set
     select_pls = []      # pseudolabels of selected examples in the unlabeled set
     select_gains = []    # gains of selected examples in the unlabeled set
+    
     # per class for loop
     for i in range(num_cls):
         # Find indices of the smi_query_set which have samples from class i
         val_class_idx = torch.where(smi_query_set.target == i)[0]
         val_class_subset = Subset(smi_query_set, val_class_idx)
+        smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")
+        query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(), X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine", method="sklearn")
+        obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+                                                                      num_queries=smi_query_data_embedding.shape[0], 
+                                                                      query_sijs=query_sijs, 
+                                                                      queryDiversityEta=1)
+        greedyList = obj.maximize(budget=budget_all,optimizer="LazyGreedy", stopIfZeroGain=False, 
+                              stopIfNegativeGain=False, verbose=False)
+        subset_idx_for_the_class = [x[0] for x in greedyList]
+        selected_idx_class_gain = [x[1] for x in greedyList]                                                                    
         # smi selection for class i
-        strategy_sel = SMI(train_set, unlabeled_set, val_class_subset, model, num_cls, strategy_args) # todo: is budget used here?
+        # strategy_sel = SMI(train_set, unlabeled_set, val_class_subset, model, num_cls, strategy_args) # todo: is budget used here?
         # subset_idx_for_the_class = strategy_sel.select(budget_all) # todo: occupy the GPU 0 for a fixed number
-        subset_idx_for_the_class, selected_idx_class_gain = strategy_sel.select(budget_all)
+        # subset_idx_for_the_class, selected_idx_class_gain = strategy_sel.select(budget_all)
         select_idx.append(subset_idx_for_the_class)
         select_gains.append(selected_idx_class_gain)
         # a list, store smi pseudo labels as the current class of query_class_subset
