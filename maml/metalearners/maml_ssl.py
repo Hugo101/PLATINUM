@@ -16,44 +16,31 @@ args = arg_parser.parse_args()
 
 __all__ = ['ModelAgnosticMetaLearning', 'MAML', 'FOMAML']
 
-# if args.ssl_algo == 'VAT':
-#     print("SSL algorithm: VAT")
-#     from lib_SSL.algs.vat import VAT
-#
-#     alg_cfg = config['VAT']
-#     consis_coef = alg_cfg['consis_coef']
-#     ssl_obj = VAT(alg_cfg["eps"]["svhn"], alg_cfg["xi"], 1)
-#
-# if args.ssl_algo == 'PL':
-#     print(f"##### SSL algorithm: PL, TrueLabel:{args.select_true_label}")
-#     from lib_SSL.algs.pseudo_label import PL
-#     alg_cfg = config['PL']
-#     consis_coef = alg_cfg['consis_coef']
-#
-#     ssl_obj = PL(args.pl_threshold, args.select_true_label, args.scenario, args.verbose)
-#     ssl_obj_joint = PL(args.pl_threshold, args.select_true_label, args.scenario, args.verbose, support_unlabeled_avg_flag=True)
-#
-# if args.ssl_algo == 'PL_topZ':
-#     print(f"##### SSL algorithm: PL with Top Z, TrueLabel:{args.select_true_label}")
-#     from lib_SSL.algs.pseudo_label_topZ import PL_topZ
-#     consis_coef = 1
-#     ssl_obj = PL_topZ(args.pl_topz, args.select_true_label, args.scenario, args.verbose)
+consis_coef_outer = 1
+WARMSTART_EPOCH = 100
+WARMSTART_ITER = 10000
+consis_coef = 1
+WARM = 0
 
-if args.ssl_algo == 'SMI':
-    print(f"##### Subset Selection algorithm: SMI, TrueLabel:{args.select_true_label}")
-    consis_coef_outer = 1
-    WARMSTART_EPOCH = 100
-    WARMSTART_ITER = 10000
+strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
+strategy_args['smi_function'] = args.sf
+strategy_args['optimizer'] = 'LazyGreedy'
+
+if args.ssl_algo == 'SMI' and args.type_smi == "vanilla":
+    print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
+    # from lib_SSL.algs.smi_function import smi_pl_comb
+    from lib_SSL.algs.smi_function_vanilla import smi_pl_comb
+
+elif args.ssl_algo == 'SMI' and args.type_smi == "rank":
+    print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
+    # from lib_SSL.algs.smi_function import smi_pl_comb
+    from lib_SSL.algs.smi_function_rank import smi_pl_comb
+
+elif args.ssl_algo == 'SMI' and args.type_smi == "gain":
+    print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
     # from lib_SSL.algs.smi_function import smi_pl_comb
     from lib_SSL.algs.smi_function_gain import smi_pl_comb
-    consis_coef = 1
-    strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
 
-    strategy_args['smi_function'] = args.sf
-    strategy_args['optimizer'] = 'LazyGreedy'
-
-
-WARM = 0
 
 class ModelAgnosticMetaLearning(object):
     """Meta-learner class for Model-Agnostic Meta-Learning [1].
@@ -162,9 +149,8 @@ class ModelAgnosticMetaLearning(object):
                 'mean_outer_loss': [],
                 "coef_inner": [],
                 "coef_outer": [],
-                'ratio_ood_selected': [],
                 # store inner and outer selection accuracy
-                'accuracy_selected': [],
+                'stat_selected': [],
                 "accuracy_change_per_task": [],
                 "accuracies_after": [],
         }
@@ -184,8 +170,8 @@ class ModelAgnosticMetaLearning(object):
                     print("inner loss (labeled): \n{}".format(results['inner_losses_labeled']))
                     print("inner loss (unlabeled): \n{}".format(results['inner_losses_unlabeled']))
                     print("inner loss (labeled+unlabeled): \n{}".format(results['inner_losses']))
-                    print("inner and outer ratio of ood selection:\n{}".format(results['ratio_ood_selected']))
-                    print("inner and outer accuracy_selected:\n{}".format(results['accuracy_selected']))
+
+                    print("inner and outer stat_selected:\n{}".format(results['stat_selected']))
                     print("coeffcient in the inner loop:\n{}\n".format(results['coef_inner']))
 
                 for k,v in results.items():
@@ -244,9 +230,8 @@ class ModelAgnosticMetaLearning(object):
             'outer_losses_unlabeled': np.zeros((num_tasks,), dtype=np.float32),
             'mean_outer_loss': 0.,
             'coef_outer': 0.,
-            'ratio_ood_selected': np.empty((num_adapt_steps+1, num_tasks), dtype=object), # include outer loop
             # store inner and outer selection accuracy
-            'accuracy_selected': np.empty((num_adapt_steps+1, num_tasks), dtype=object), # include outer loop
+            'stat_selected': np.empty((num_adapt_steps+1, num_tasks), dtype=object), # include outer loop
             "accuracy_change_per_task": np.zeros((2, num_tasks), dtype=np.float32),
             # accu before inner loop
             # accu of support after inner loop
@@ -286,13 +271,13 @@ class ModelAgnosticMetaLearning(object):
             # outer subset selection
             print("\n++++++ outer loop:") if args.verbose else None
             if args.ssl_algo != "SMI":
-                loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
+                loss_unlabeled, select_stat = 0, 0
             else:
                 model_smi_copy = copy.deepcopy(self.model)  # Deep copy the other exactly the same model
                 model_smi_copy = model_update(model_smi_copy, params)  # update model for this step # VITAL!!!
                 strategy_args['device'] = self.device
                 strategy_args['budget'] = args.budget_q
-                loss_unlabeled, ratio_ood, acc_slct, selected_ids_outer = smi_pl_comb(support_inputs, support_targets,
+                loss_unlabeled, select_stat, selected_ids_outer = smi_pl_comb(support_inputs, support_targets,
                                                                                       query_inputs, query_targets,
                                                                                       unlabeled_inputs, unlabeled_targets,
                                                                                       args.selection_option,
@@ -308,12 +293,11 @@ class ModelAgnosticMetaLearning(object):
                                                                                       strategy_args)
                 del model_smi_copy
 
-            print(f"******** TaskID:{task_id}, outloop SMI selection accuracy: {acc_slct}\n") if args.verbose else None
+            print(f"******** TaskID:{task_id}, outloop SMI selection statistic: {select_stat}\n") if args.verbose else None
             results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
-            adaptation_results['ratio_ood_selected'].append(ratio_ood)
-            adaptation_results['accuracy_selected'].append(acc_slct)
-            results['ratio_ood_selected'][:, task_id] = adaptation_results['ratio_ood_selected']
-            results['accuracy_selected'][:, task_id] = adaptation_results['accuracy_selected']
+            adaptation_results['stat_selected'].append(select_stat)
+
+            results['stat_selected'][:, task_id] = adaptation_results['stat_selected']
 
             if self.coef_outer >= 0:
                 coeff = self.coef_outer
@@ -345,8 +329,7 @@ class ModelAgnosticMetaLearning(object):
                    'inner_losses_unlabeled': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'inner_losses': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'coef_inner': np.zeros(num_adaptation_steps, dtype=np.float32),
-                   'ratio_ood_selected': [],
-                   'accuracy_selected': [],
+                   'stat_selected': [],
                    }
 
         selected_ids_inner = []
@@ -370,30 +353,30 @@ class ModelAgnosticMetaLearning(object):
                 results['coef_inner'][step] = coeff
 
                 if args.ssl_algo == "MAML":
-                    loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
+                    loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
                     if progress < WARM:
-                        loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
+                        loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
                         model_smi_copy = model_update(model_smi_copy, params)   # update model for this step # VITAL!!!
                         strategy_args['device'] = self.device
                         strategy_args['budget'] = args.budget_s
-                        loss_unlabeled, ratio_ood, acc_slct, selected_ids = smi_pl_comb(support_inputs, support_targets,
-                                                                                        query_inputs, query_targets,
-                                                                                        unlabeled_inputs, unlabeled_targets,
-                                                                                        args.selection_option,
-                                                                                        True,  # inner loop
-                                                                                        [],
-                                                                                        model_smi_copy,
-                                                                                        self.model, params,
-                                                                                        args.num_ways,
-                                                                                        True,  # meta-train
-                                                                                        args.select_true_label,
-                                                                                        args.scenario,
-                                                                                        args.verbose,
-                                                                                        strategy_args)
+                        loss_unlabeled, select_stat, selected_ids = smi_pl_comb(support_inputs, support_targets,
+                                                                                query_inputs, query_targets,
+                                                                                unlabeled_inputs, unlabeled_targets,
+                                                                                args.selection_option,
+                                                                                True,  # inner loop
+                                                                                [],
+                                                                                model_smi_copy,
+                                                                                self.model, params,
+                                                                                args.num_ways,
+                                                                                True,  # meta-train
+                                                                                args.select_true_label,
+                                                                                args.scenario,
+                                                                                args.verbose,
+                                                                                strategy_args)
                         del model_smi_copy
                         selected_ids_inner.extend(selected_ids)
 
@@ -404,8 +387,7 @@ class ModelAgnosticMetaLearning(object):
                 results['inner_losses_labeled'][step] = loss_support.item()
                 results['inner_losses_unlabeled'][step] = loss_unlabeled
                 results['inner_losses'][step] = inner_loss
-                results['ratio_ood_selected'].append(ratio_ood)
-                results['accuracy_selected'].append(acc_slct)
+                results['stat_selected'].append(select_stat)
 
             if (step == 0) and is_classification_task:
                 # acc before inner loop training 10-14-2021
@@ -441,8 +423,7 @@ class ModelAgnosticMetaLearning(object):
                    'inner_losses_unlabeled': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'inner_losses': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'coef_inner': np.zeros(num_adaptation_steps, dtype=np.float32),
-                   'ratio_ood_selected': [],
-                   'accuracy_selected': [],
+                   'stat_selected': [],
                    }
 
         selected_ids_inner = []
@@ -489,30 +470,30 @@ class ModelAgnosticMetaLearning(object):
                 results['coef_inner'][step] = coeff
 
                 if args.ssl_algo == "MAML":
-                    loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
+                    loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
                     if progress < WARM:
-                        loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
+                        loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
                         model_smi_copy = model_update(model_smi_copy, params)   # update model for this step # VITAL!!!
                         strategy_args['device'] = self.device
                         strategy_args['budget'] = args.budget_s
-                        loss_unlabeled, ratio_ood, acc_slct, selected_ids = smi_pl_comb(inputs, targets,
-                                                                                        None, None,
-                                                                                        unlabeled_inputs, unlabeled_targets,
-                                                                                        None,  # useless, selection_option
-                                                                                        True,  # useless, inner loop
-                                                                                        [],
-                                                                                        model_smi_copy,
-                                                                                        self.model, params,
-                                                                                        args.num_ways,
-                                                                                        False,  # meta-test
-                                                                                        args.select_true_label,
-                                                                                        args.scenario,
-                                                                                        args.verbose,
-                                                                                        strategy_args)
+                        loss_unlabeled, select_stat, selected_ids = smi_pl_comb(inputs, targets,
+                                                                                None, None,
+                                                                                unlabeled_inputs, unlabeled_targets,
+                                                                                None,  # useless, selection_option
+                                                                                True,  # useless, inner loop
+                                                                                [],
+                                                                                model_smi_copy,
+                                                                                self.model, params,
+                                                                                args.num_ways,
+                                                                                False,  # meta-test
+                                                                                args.select_true_label,
+                                                                                args.scenario,
+                                                                                args.verbose,
+                                                                                strategy_args)
                         del model_smi_copy
                         selected_ids_inner.extend(selected_ids)
 
@@ -523,8 +504,7 @@ class ModelAgnosticMetaLearning(object):
                 results['inner_losses_labeled'][step] = loss_support.item()
                 results['inner_losses_unlabeled'][step] = loss_unlabeled
                 results['inner_losses'][step] = inner_loss
-                results['ratio_ood_selected'].append(ratio_ood)
-                results['accuracy_selected'].append(acc_slct)
+                results['stat_selected'].append(select_stat)
 
             if (step == 0) and is_classification_task:
                 # acc before inner loop training 10-14-2021
@@ -560,8 +540,7 @@ class ModelAgnosticMetaLearning(object):
             'outer_losses': np.zeros((num_tasks,), dtype=np.float32),
             # 'outer_losses_unlabeled': np.zeros((num_tasks,), dtype=np.float32),
             'mean_outer_loss': 0.,
-            'ratio_ood_selected': np.empty((num_adapt_steps, num_tasks), dtype=object),
-            'accuracy_selected': np.empty((num_adapt_steps, num_tasks), dtype=object),
+            'stat_selected': np.empty((num_adapt_steps, num_tasks), dtype=object),
             "accuracy_change_per_task": np.zeros((2, num_tasks), dtype=np.float32),
             # accu before inner loop
             # accu of support after inner loop
@@ -584,8 +563,7 @@ class ModelAgnosticMetaLearning(object):
             results['inner_losses_unlabeled'][:, task_id] = adaptation_results['inner_losses_unlabeled']
             results['inner_losses'][:, task_id] = adaptation_results['inner_losses']
             results['coef_inner'][:, task_id] = adaptation_results['coef_inner']
-            results['ratio_ood_selected'][:, task_id] = adaptation_results['ratio_ood_selected']
-            results['accuracy_selected'][:, task_id] = adaptation_results['accuracy_selected']
+            results['stat_selected'][:, task_id] = adaptation_results['stat_selected']
 
             results['accuracy_change_per_task'][0, task_id]  = adaptation_results['accuracy_before']
             results['accuracy_change_per_task'][1, task_id] = adaptation_results['accuracy_support']
@@ -614,9 +592,8 @@ class ModelAgnosticMetaLearning(object):
             'inner_losses': [],
             'outer_losses': [],
             'mean_outer_loss': [],
-            'ratio_ood_selected': [],
             # store inner and outer selection accuracy
-            'accuracy_selected': [],
+            'stat_selected': [],
             "accuracy_change_per_task": [],
             "accuracies_after": [],
         }
@@ -635,8 +612,8 @@ class ModelAgnosticMetaLearning(object):
                     print("\ninner loss (labeled): \n{}".format(results['inner_losses_labeled']))
                     print("inner loss (unlabeled): \n{}".format(results['inner_losses_unlabeled']))
                     print("inner loss (labeled+unlabeled):\n{}".format(results['inner_losses']))
-                    print("inner loss ratio of ood selection:\n{}".format(results['ratio_ood_selected']))
-                    print("inner loss accuracy_selected:\n{}".format(results['accuracy_selected']))
+
+                    print("inner loss stat_selected:\n{}".format(results['stat_selected']))
                     print("coeffcient in the inner loop:\n{}\n".format(results['coef_inner']))
 
                 for k, v in results.items():
@@ -665,7 +642,6 @@ class ModelAgnosticMetaLearning(object):
 
 
 MAML = ModelAgnosticMetaLearning
-
 
 
 class FOMAML(ModelAgnosticMetaLearning):

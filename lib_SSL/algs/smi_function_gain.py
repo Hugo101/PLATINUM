@@ -196,28 +196,20 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
     gt_mask[selected_idx.long()] = 1  # make the selected index as 1
 
     # intermediate results
-    num_unlabeled_select = gt_mask.sum(0)
+    num_unlabeled = len(unlabeled_targets)
+    num_select = len(selected_idx)
+    num_select_wo_duplicate = gt_mask.sum(0)
+    num_oods_select = 0
     if scenario == "distractor":
-
-        # num_oods = (unlabeled_targets == -1).sum(dim=0)
-        # num_unlabeled = len(unlabeled_targets)
         labels_unlabeled_select = unlabeled_targets * gt_mask
         num_oods_select = (labels_unlabeled_select == -1).sum(dim=0)
-        ratio_ood = "{}/{}={:.4f}".format(num_oods_select, num_unlabeled_select, num_oods_select / num_unlabeled_select)
-        if verbose:
-            # print("\n=== OOD samples analysis:")
-            # print("====== The ratio of OOD samples in the unlabeled set is: "
-            #       "{}/{}={:.4f}.".format(num_oods, num_unlabeled, num_oods / num_unlabeled))
-            print(f'====== The ratio of OOD samples in the selected unlabeled set is: {ratio_ood}')
-        # ====
 
     if scenario in ["woDistractor", "distractor"]:         # does not work for random selection for now
-        # ====== log the accuracy of selected samples
-        selected_targets = unlabeled_targets[selected_idx]
+        # ====== log the selection statistics
+        selected_targets = unlabeled_targets[selected_idx]     # todo: check the index whether matched or not
         num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)
-        accu_among_selected = num_selected_correct / num_unlabeled_select
-        acc_slct = "{}/{}={:.4f}".format(num_selected_correct, num_unlabeled_select, accu_among_selected)
-        print(f"+++++ The accu in the selected samples: {acc_slct}") if verbose else None
+        select_stat = "{}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate, num_select, num_unlabeled, num_oods_select)
+        print(f"+++++ Some statistics in the selection: {select_stat}") if verbose else None
         # ======
 
     selected_unlabel_samples = unlabeled_inputs[selected_idx]
@@ -230,10 +222,7 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
     loss_selected = torch.sum(losses_selected) / len(selected_idx)
 
     print("+++++ the SSL loss : {:.8f}.\n".format(loss_selected)) if verbose else None
-    if scenario == "woDistractor":
-        return loss_selected, 0, acc_slct
-    if scenario == "distractor":
-        return loss_selected, ratio_ood, acc_slct
+    return loss_selected, select_stat
 
 
 def smi_pl_comb(support_inputs, support_targets,
@@ -250,13 +239,20 @@ def smi_pl_comb(support_inputs, support_targets,
                 scenario,
                 verbose,
                 strategy_args={}):
+
+    # 0.: first remove the unlabeled examples from the excluded_set (for outer loop selection)
+    if excluded_set:
+        unlabeled_size = len(unlabeled_targets)  # original size of unlabeled set
+        rest_indices = list(set(list(range(unlabeled_size))) - excluded_set)
+        unlabel_inputs = unlabel_inputs[rest_indices]
+        unlabeled_targets = unlabeled_targets[rest_indices]
+
     # 1. get the index and pseudo labels of selected samples
     selected_idx, selected_pseudolabels = smi_function(support_inputs, support_targets,
                                                        query_inputs, query_targets,
                                                        unlabel_inputs, unlabeled_targets,
                                                        selection_option,
                                                        is_inner,
-                                                       excluded_set,
                                                        model_smi_copy,
                                                        num_cls,
                                                        meta_train=meta_train,
@@ -267,10 +263,10 @@ def smi_pl_comb(support_inputs, support_targets,
     selected_pseudolabels = torch.tensor(selected_pseudolabels).to(strategy_args['device'])  # Tensor:(30,)
 
     # 2. calculate the loss of the selected unlabeled set
-    loss_unlabel, ratio_ood, acc_slct = smi_pl_loss(unlabel_inputs, unlabeled_targets,
+    loss_unlabel, select_stat = smi_pl_loss(unlabel_inputs, unlabeled_targets,
                                                     selected_idx_tensor, selected_pseudolabels,
                                                     model, params,
                                                     num_cls, is_select_true_label,
                                                     scenario,
                                                     verbose)
-    return loss_unlabel, ratio_ood, acc_slct, selected_idx
+    return loss_unlabel, select_stat, selected_idx

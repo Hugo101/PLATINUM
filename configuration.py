@@ -18,11 +18,12 @@ arg_parser.add_argument('--ratio', type=float, default=0.4,
 
 
 # SSL Experimental Setting
-arg_parser.add_argument('--scenario', type=str, default="distractor",
+arg_parser.add_argument('--scenario', type=str, default="woDistractor",
                         choices=["woDistractor", "distractor", "random" , "allOOD"],
                         help="Different SS FSL approaches, including subset selection and baselines")
 arg_parser.add_argument('--ssl_algo', type=str, default='SMI')  # "PL", "VAT", "SMI", "PLtopZ"
 arg_parser.add_argument('--selection_option', type=str, default='cross')  # "same", "cross", "union"
+arg_parser.add_argument('--type_smi', type=str, default='vanilla')  # "vanilla", "rank", "gain"
 arg_parser.add_argument('--ssl_algo_meta_test', type=str, default='mamlTestLargeS')  # "no",  "mamlTestLargeS"
 arg_parser.add_argument('--coef_inner', type=float, default=-1,
                         help='coefficient of ssl loss function in the inner loop.')
