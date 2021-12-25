@@ -224,7 +224,7 @@ class ModelAgnosticMetaLearningBaseline(object):
 
             # outer subset selection
             print("\n++++++ outer loop:") if args.verbose else None
-            if not args.is_outer_selection:
+            if not args.no_outer_selection:
                 loss_unlabeled, ratio_ood, acc_slct = 0, 0, 0
             else:
                 torch.cuda.empty_cache()

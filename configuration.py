@@ -114,6 +114,8 @@ arg_parser.add_argument('--verbose', action='store_true')
 
 # debugging purpose
 arg_parser.add_argument('--select_true_label', action='store_true')  # false: pl, True: true label
-arg_parser.add_argument('--is_outer_selection', action='store_false',
+arg_parser.add_argument('--no_outer_selection', action='store_true',
                         help='whether outer loop has selection or not')
 arg_parser.add_argument("--interval_val", type=int, default=10)
+
+arg_parser.add_argument("--WARMSTART_EPOCH", type=int, default=100)

@@ -16,11 +16,14 @@ args = arg_parser.parse_args()
 
 __all__ = ['ModelAgnosticMetaLearning', 'MAML', 'FOMAML']
 
-consis_coef_outer = 1
-WARMSTART_EPOCH = 100
+
+WARMSTART_EPOCH = args.WARMSTART_EPOCH
 WARMSTART_ITER = 10000
 consis_coef = 1
+consis_coef_outer = 1
 WARM = 0
+WARM_inner = 0
+WARM_inner_eval = 0
 
 strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
 strategy_args['smi_function'] = args.sf
@@ -270,7 +273,7 @@ class ModelAgnosticMetaLearning(object):
 
             # outer subset selection
             print("\n++++++ outer loop:") if args.verbose else None
-            if args.ssl_algo != "SMI":
+            if args.no_outer_selection:
                 loss_unlabeled, select_stat = 0, 0
             else:
                 model_smi_copy = copy.deepcopy(self.model)  # Deep copy the other exactly the same model
@@ -294,7 +297,11 @@ class ModelAgnosticMetaLearning(object):
                 del model_smi_copy
 
             print(f"******** TaskID:{task_id}, outloop SMI selection statistic: {select_stat}\n") if args.verbose else None
-            results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
+            if type(loss_unlabeled) == torch.Tensor:
+                results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
+            else:
+                results['outer_losses_unlabeled'][task_id] = loss_unlabeled
+            # results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
             adaptation_results['stat_selected'].append(select_stat)
 
             results['stat_selected'][:, task_id] = adaptation_results['stat_selected']
@@ -356,7 +363,7 @@ class ModelAgnosticMetaLearning(object):
                     loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
-                    if progress < WARM:
+                    if step <= WARM_inner:
                         loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
@@ -473,7 +480,7 @@ class ModelAgnosticMetaLearning(object):
                     loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
-                    if progress < WARM:
+                    if step <= WARM_inner_eval:
                         loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
