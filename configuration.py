@@ -21,7 +21,7 @@ arg_parser.add_argument('--ratio', type=float, default=0.4,
 arg_parser.add_argument('--scenario', type=str, default="woDistractor",
                         choices=["woDistractor", "distractor", "random" , "allOOD"],
                         help="Different SS FSL approaches, including subset selection and baselines")
-arg_parser.add_argument('--ssl_algo', type=str, default='SMI')  # "PL", "VAT", "SMI", "PLtopZ"
+arg_parser.add_argument('--ssl_algo', type=str, default='PLtopZperClass')  # "PL", "VAT", "SMI", "PLtopZ", "PLtopZperClass"
 arg_parser.add_argument('--selection_option', type=str, default='cross')  # "same", "cross", "union"
 arg_parser.add_argument('--type_smi', type=str, default='vanilla')  # "vanilla", "rank", "gain"
 arg_parser.add_argument('--ssl_algo_meta_test', type=str, default='mamlTestLargeS')  # "no",  "mamlTestLargeS"
@@ -119,3 +119,5 @@ arg_parser.add_argument('--no_outer_selection', action='store_true',
 arg_parser.add_argument("--interval_val", type=int, default=10)
 
 arg_parser.add_argument("--WARMSTART_EPOCH", type=int, default=100)
+
+arg_parser.add_argument("--resume", action='store_true')
