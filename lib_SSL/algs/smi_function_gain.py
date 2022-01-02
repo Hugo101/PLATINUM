@@ -131,13 +131,19 @@ def smi_function(support_inputs, support_targets,
     unlabeled_set = DatasetSMI(unlabel_inputs, unlabeled_targets)
     unlabeled_set = LabeledToUnlabeledDataset(unlabeled_set)
 
+    smi_function = strategy_args['smi_function'] if 'smi_function' in strategy_args else "fl2mi"
+    embedding_type = strategy_args['embedding_type'] if 'embedding_type' in strategy_args else "gradients"
+
     #compute embeddings of the unlabeled set out the class loop
     strategy_obj = Strategy(train_set, unlabeled_set, model, num_cls, strategy_args)
-    unlabeled_data_embedding = strategy_obj.get_grad_embedding(unlabeled_set, True, "bias_linear")
+    if(embedding_type == "gradients"):
+        unlabeled_data_embedding = strategy_obj.get_grad_embedding(unlabeled_set, True, "bias_linear")
+    else: #use class scores
+        unlabeled_data_embedding = strategy_obj.get_class_scores(unlabeled_set)
 
     budget_all = int(strategy_args['budget']) + len(excluded_set)
     budget_per_class = int(strategy_args['budget'] / num_cls)
-
+    
     select_idx = []      # indice of selected examples in the unlabeled set
     select_pls = []      # pseudolabels of selected examples in the unlabeled set
     select_gains = []    # gains of selected examples in the unlabeled set
@@ -147,12 +153,25 @@ def smi_function(support_inputs, support_targets,
         # Find indices of the smi_query_set which have samples from class i
         val_class_idx = torch.where(smi_query_set.target == i)[0]
         val_class_subset = Subset(smi_query_set, val_class_idx)
-        smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")
+        if(embedding_type == "gradients"):
+            smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")
+        else: #use class scores
+            smi_query_data_embedding = torch.zeros(num_cls)
+            smi_query_data_embedding[i] = 1
         query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(), X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine", method="sklearn")
-        obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+        if(smi_function == "fl2mi"):
+            print("Using FL2MI for subset selection!")
+            obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
                                                                       num_queries=smi_query_data_embedding.shape[0], 
                                                                       query_sijs=query_sijs, 
                                                                       queryDiversityEta=1)
+        if(smi_function == "gcmi"):
+            print("Using GCMI for subset selection!")
+            obj = submodlib.GraphCutMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+                                                                      num_queries=smi_query_data_embedding.shape[0], 
+                                                                      query_sijs=query_sijs,
+                                                                      metric="cosine")
+
         greedyList = obj.maximize(budget=budget_all,optimizer="LazyGreedy", stopIfZeroGain=False, 
                               stopIfNegativeGain=False, verbose=False)
         subset_idx_for_the_class = [x[0] for x in greedyList]

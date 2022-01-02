@@ -28,6 +28,7 @@ WARM_inner_eval = 0
 strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
 strategy_args['smi_function'] = args.sf
 strategy_args['optimizer'] = 'LazyGreedy'
+strategy_args['embedding_type'] = args.embedding_type
 
 if args.ssl_algo == 'SMI' and args.type_smi == "vanilla":
     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
@@ -280,6 +281,8 @@ class ModelAgnosticMetaLearning(object):
                 model_smi_copy = model_update(model_smi_copy, params)  # update model for this step # VITAL!!!
                 strategy_args['device'] = self.device
                 strategy_args['budget'] = args.budget_q
+                
+
                 loss_unlabeled, select_stat, selected_ids_outer = smi_pl_comb(support_inputs, support_targets,
                                                                                       query_inputs, query_targets,
                                                                                       unlabeled_inputs, unlabeled_targets,
