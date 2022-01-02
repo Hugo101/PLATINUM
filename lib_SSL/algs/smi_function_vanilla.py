@@ -197,7 +197,7 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
         num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)
         select_stat = "{}, {}, {}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate,
                                                           num_select, num_unlabeled, num_oods_select,
-                                                          selected_targets, selected_gains)
+                                                          selected_targets.cpu().numpy(), selected_gains)
         print(f"+++++ Some statistics in the selection: {select_stat}") if verbose else None
         # ======
 
