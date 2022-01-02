@@ -105,26 +105,40 @@ def maml_ssl_main(args, device):
     epoch_desc_train = 'Epoch {{0: <{0}d}} (meta-train)'.format(1 + int(math.log10(args.num_epochs)))
     epoch_desc_val = 'Epoch {{0: <{0}d}} (meta-valid)'.format(1 + int(math.log10(args.num_epochs)))
     epoch_desc_tst = 'Epoch {{0: <{0}d}} (meta-test)'.format(1 + int(math.log10(args.num_epochs)))
-    for epoch in range(args.num_epochs):
+
+    # # load the saved variables to resume the training
+    # if args.resume:
+    #     # saved results
+    #     with open(path_resume+ "results_train.pkl", "rb") as f:
+    #         results_train = pickle.load(f)
+    #     with open(path_resume+ "results_valid.pkl", "rb") as f:
+    #         results_valid = pickle.load(f)
+    #     with open(path_resume+ "results_test.pkl", "rb") as f:
+    #         results_test = pickle.load(f)
+    #     with open(path_resume+ "results_mean_valid_test.json", "rb") as f:
+    #         results_mean_val_tst_epochs = json.load(f)
+
+    start_epoch = 0
+    for epoch in range(start_epoch+1, args.num_epochs+1):
         # meta training
         result_train_per_epoch = metalearner.train(meta_train_dataloader,
                                              max_batches=args.num_batches,
                                              batch_size=args.batch_size,
                                              verbose=args.verbose,
-                                             progress=epoch + 1,
-                                             desc=epoch_desc_train.format(epoch + 1),
+                                             progress=epoch,
+                                             desc=epoch_desc_train.format(epoch),
                                              )
         results_train = cat_data(results_train, result_train_per_epoch)
 
 
-        if (epoch+1) % INTERVAL_VAL == 0:
+        if epoch % INTERVAL_VAL == 0:
             # meta validation
             results_mean_val, results_all_tasks_val = metalearner.evaluate(meta_valid_dataloader,
                                                                            max_batches=args.num_batches,
                                                                            batch_size=args.batch_size_val,
                                                                            verbose=args.verbose,
-                                                                           progress=epoch + 1,
-                                                                           desc=epoch_desc_val.format(epoch + 1))
+                                                                           progress=epoch,
+                                                                           desc=epoch_desc_val.format(epoch))
             results_valid = append_data(results_valid, results_all_tasks_val)
             results_mean_val_tst_epochs["mean_loss_val"].append(results_mean_val['mean_outer_loss'])
             results_mean_val_tst_epochs["mean_accu_val"].append(results_mean_val["accuracies_after"])
@@ -136,8 +150,8 @@ def maml_ssl_main(args, device):
                                                                                max_batches=args.num_batches,
                                                                                batch_size=args.batch_size_test,
                                                                                verbose=args.verbose,
-                                                                               progress=epoch + 1,
-                                                                               desc=epoch_desc_tst.format(epoch + 1))
+                                                                               progress=epoch,
+                                                                               desc=epoch_desc_tst.format(epoch))
                 results_test = append_data(results_test, results_all_tasks_tst)
                 results_mean_val_tst_epochs["mean_loss_tst"].append(results_mean_tst['mean_outer_loss'])
                 results_mean_val_tst_epochs["mean_accu_tst"].append(results_mean_tst["accuracies_after"])
@@ -162,7 +176,7 @@ def maml_ssl_main(args, device):
                 save_model = False
 
             if save_model and (args.output_folder is not None):
-                print(f"^^^^^ Best model at Epoch: {epoch+1}")
+                print(f"^^^^^ Best model at Epoch: {epoch}")
                 best_epoch={"epoch": epoch,
                             "valid": results_mean_val,
                             "test": results_mean_tst,
@@ -212,15 +226,17 @@ def main():
     elif args.ssl_algo == "PLtopZ":
         tag = '_'.join(['TopZs', str(args.pl_num_topz), 'TopZq', str(args.pl_num_topz_outer), "TrueLabel", str(args.select_true_label)])
 
-    specific_file_name = time.strftime('%Y-%m-%d-%H%M%S') + "_" + tag + "_" + '_'.join(
-        ['LabelRatio', str(args.ratio), '#ShotU', str(args.num_shots_unlabeled), '#InnerLR', str(args.step_size), 'Seed', str(args.seed), ])
-    specific_model_path = os.path.join(few_shot_path, specific_file_name)
-    ct.create_path(specific_model_path)
+    if not args.resume:
+        specific_file_name = time.strftime('%Y-%m-%d-%H%M%S') + "_" + tag + "_" + '_'.join(
+            ['LabelRatio', str(args.ratio), '#ShotU', str(args.num_shots_unlabeled), '#InnerLR', str(args.step_size), 'Seed', str(args.seed), ])
+        specific_model_path = os.path.join(few_shot_path, specific_file_name)
+        ct.create_path(specific_model_path)
+        args.output_subfolder = os.path.abspath(specific_model_path)   # absolute path
+    else:
+        args.output_subfolder = os.path.abspath(args.checkpoint_path)  # absolute path
 
-    args.output_subfolder = os.path.abspath(specific_model_path)   # absolute path
     ct.set_logger('{}/log_file_outerLossAcc_seed_{}'.format(args.output_subfolder, args.seed), 'err')   # log file
     # ct.set_logger('{}/log_file_seed_{}'.format(args.output_subfolder, args.seed), 'out')   # log file
-
     print('Random Seed: {}'.format(args.seed))
     ct.set_random_seeds(args.seed)
     device = ct.set_device(args.gpu_id)
