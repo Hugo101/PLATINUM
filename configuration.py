@@ -35,6 +35,7 @@ arg_parser.add_argument('--coef_outer', type=float, default=-1,
 arg_parser.add_argument("--sf", type=str, default="fl2mi")
 arg_parser.add_argument("--budget_s", type=int, default=25)  # 30 for 1-shot, 50 for 5-shot, for support set
 arg_parser.add_argument("--budget_q", type=int, default=75)  # for query set
+arg_parser.add_argument("--embedding_type", type=str, default="gradients")  # for query set
 
 
 arg_parser.add_argument('--num_ways', type=int, default=5,
