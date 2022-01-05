@@ -153,7 +153,7 @@ class ModelAgnosticMetaLearning(object):
                 'mean_outer_loss': [],
                 "coef_inner": [],
                 "coef_outer": [],
-                # store inner and outer selection accuracy
+                # store inner and outer stat_selected
                 'stat_selected': [],
                 "accuracy_change_per_task": [],
                 "accuracies_after": [],
@@ -174,7 +174,6 @@ class ModelAgnosticMetaLearning(object):
                     print("inner loss (labeled): \n{}".format(results['inner_losses_labeled']))
                     print("inner loss (unlabeled): \n{}".format(results['inner_losses_unlabeled']))
                     print("inner loss (labeled+unlabeled): \n{}".format(results['inner_losses']))
-
                     print("inner and outer stat_selected:\n{}".format(results['stat_selected']))
                     print("coeffcient in the inner loop:\n{}\n".format(results['coef_inner']))
 
@@ -206,7 +205,7 @@ class ModelAgnosticMetaLearning(object):
                 self.optimizer.zero_grad()
 
                 batch = tensors_to_device(batch, device=self.device)
-                # torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
                 outer_loss, results = self.get_outer_loss(batch, self.num_adaptation_steps,
                                                           progress=progress,
                                                           sub_progress=num_batches)
@@ -234,7 +233,7 @@ class ModelAgnosticMetaLearning(object):
             'outer_losses_unlabeled': np.zeros((num_tasks,), dtype=np.float32),
             'mean_outer_loss': 0.,
             'coef_outer': 0.,
-            # store inner and outer selection accuracy
+            # store inner and outer stat_selected
             'stat_selected': np.empty((num_adapt_steps+1, num_tasks), dtype=object), # include outer loop
             "accuracy_change_per_task": np.zeros((2, num_tasks), dtype=np.float32),
             # accu before inner loop
@@ -299,14 +298,12 @@ class ModelAgnosticMetaLearning(object):
                                                                                       strategy_args)
                 del model_smi_copy
 
-            print(f"******** TaskID:{task_id}, outloop SMI selection statistic: {select_stat}\n") if args.verbose else None
+            print(f"******** TaskID:{task_id}, outloop SMI selection statistics: {select_stat}\n") if args.verbose else None
             if type(loss_unlabeled) == torch.Tensor:
                 results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
             else:
                 results['outer_losses_unlabeled'][task_id] = loss_unlabeled
-            # results['outer_losses_unlabeled'][task_id] = loss_unlabeled.item()
             adaptation_results['stat_selected'].append(select_stat)
-
             results['stat_selected'][:, task_id] = adaptation_results['stat_selected']
 
             if self.coef_outer >= 0:
@@ -366,7 +363,7 @@ class ModelAgnosticMetaLearning(object):
                     loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
-                    if step <= WARM_inner:
+                    if step < WARM_inner:
                         loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
@@ -435,7 +432,6 @@ class ModelAgnosticMetaLearning(object):
                    'coef_inner': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'stat_selected': [],
                    }
-
         selected_ids_inner = []
 
         for step in range(num_adaptation_steps):
@@ -483,7 +479,7 @@ class ModelAgnosticMetaLearning(object):
                     loss_unlabeled, select_stat = 0, 0
 
                 elif args.ssl_algo == "SMI":  # SMI
-                    if step <= WARM_inner_eval:
+                    if step < WARM_inner_eval:
                         loss_unlabeled, select_stat = 0, 0
                     else:
                         model_smi_copy = copy.deepcopy(self.model)      # Deep copy the other exactly the same model
@@ -507,7 +503,7 @@ class ModelAgnosticMetaLearning(object):
                         del model_smi_copy
                         selected_ids_inner.extend(selected_ids)
 
-                # torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
                 # # Supervised Loss
                 loss_support = self.loss_function(outputs_support, targets, reduction="mean")
                 inner_loss = loss_support + loss_unlabeled * coeff
@@ -574,7 +570,6 @@ class ModelAgnosticMetaLearning(object):
             results['inner_losses'][:, task_id] = adaptation_results['inner_losses']
             results['coef_inner'][:, task_id] = adaptation_results['coef_inner']
             results['stat_selected'][:, task_id] = adaptation_results['stat_selected']
-
             results['accuracy_change_per_task'][0, task_id]  = adaptation_results['accuracy_before']
             results['accuracy_change_per_task'][1, task_id] = adaptation_results['accuracy_support']
 
@@ -602,7 +597,7 @@ class ModelAgnosticMetaLearning(object):
             'inner_losses': [],
             'outer_losses': [],
             'mean_outer_loss': [],
-            # store inner and outer selection accuracy
+            # store inner and outer stat_selected
             'stat_selected': [],
             "accuracy_change_per_task": [],
             "accuracies_after": [],

@@ -303,7 +303,7 @@ class ModelAgnosticMetaLearningBaseline(object):
 
         for step in range(num_adaptation_steps):
             print(f"\n++++++ At Inner Step {step+1}:") if args.verbose else None
-            outputs_labeled = self.model(inputs, params=params)
+            outputs_support = self.model(inputs, params=params)
             # torch.cuda.empty_cache()
             # print("################# sleeping for 60 secs")
             # time.sleep(60)
@@ -311,12 +311,12 @@ class ModelAgnosticMetaLearningBaseline(object):
             if self.support_unlabeled_avg:
                 print("++++++++++++ Calculate the mean loss of support set and selected unlabeled set.")
                 # losses_unlabeled, num_UN_SLT = ssl_obj_joint(inputs_labeled_unlabeled,
-                #                                              outputs_labeled_unlabeled.detach(),
+                #                                              outputs_support_unlabeled.detach(),
                 #                                              self.model, params,
                 #                                              unlabeled_mask, targets_labeled_unlabeled)
                 # assert torch.count_nonzero(losses_unlabeled).item() == num_UN_SLT
                 #
-                # losses_support = self.loss_function(outputs_labeled_unlabeled, target, reduction="none",
+                # losses_support = self.loss_function(outputs_support_unlabeled, target, reduction="none",
                 #                                     ignore_index=-1)
                 #
                 # num_support_selected = torch.count_nonzero(losses_unlabeled).item() + \
@@ -357,7 +357,7 @@ class ModelAgnosticMetaLearningBaseline(object):
 
                 torch.cuda.empty_cache()
                 # # Supervised Loss
-                loss_support = self.loss_function(outputs_labeled, targets, reduction="mean")
+                loss_support = self.loss_function(outputs_support, targets, reduction="mean")
                 inner_loss = loss_support + loss_unlabeled * coeff
                 results['inner_losses_labeled'][step] = loss_support.item()
                 results['inner_losses_unlabeled'][step] = loss_unlabeled
@@ -366,11 +366,11 @@ class ModelAgnosticMetaLearningBaseline(object):
 
             if (step == 0) and is_classification_task:
                 # acc before inner loop training 10-14-2021
-                results['accuracy_before'] = compute_accuracy(outputs_labeled, targets)
+                results['accuracy_before'] = compute_accuracy(outputs_support, targets)
 
             if (step == num_adaptation_steps-1) and is_classification_task:
                 # acc for support set after inner loop training
-                results['accuracy_support'] = compute_accuracy(outputs_labeled, targets)
+                results['accuracy_support'] = compute_accuracy(outputs_support, targets)
 
             self.model.zero_grad()
             params = gradient_update_parameters(self.model, inner_loss,
@@ -426,12 +426,12 @@ class ModelAgnosticMetaLearningBaseline(object):
             results['accuracy_change_per_task'][1, task_id] = adaptation_results['accuracy_support']
 
             with torch.set_grad_enabled(self.model.training):    # For query set. meta-train: True, meta-val/test:False
-                test_logits = self.model(query_inputs, params=params)
-                outer_loss = self.loss_function(test_logits, query_targets)
+                query_logits = self.model(query_inputs, params=params)
+                outer_loss = self.loss_function(query_logits, query_targets)
                 results['outer_losses'][task_id] = outer_loss.item()
                 mean_outer_loss += outer_loss
 
-            results['accuracies_after'][task_id] = compute_accuracy(test_logits, query_targets)
+            results['accuracies_after'][task_id] = compute_accuracy(query_logits, query_targets)
 
         mean_outer_loss.div_(num_tasks)
         results['mean_outer_loss'] = mean_outer_loss.item()
