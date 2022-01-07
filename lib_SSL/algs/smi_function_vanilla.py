@@ -6,6 +6,7 @@ from trust.trust.strategies.smi import SMI
 from trust.trust.strategies.strategy import Strategy
 from trust.trust.utils.utils import *
 import submodlib
+import numpy as np
 
 def remove_overlap(groups, groups_pseudolabels, budget_class):
     '''
@@ -131,12 +132,14 @@ def smi_function(support_inputs, support_targets,
 
         if(embedding_type == "gradients"):
             smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")
+            query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
+                                                        X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
+                                                        method="sklearn")
         else: #use class scores
             smi_query_data_embedding = torch.zeros(1, num_cls)
             smi_query_data_embedding[0][i] = 1
-        query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
-                                                    X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
-                                                    method="sklearn")
+            query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+            
         if(smi_function == "fl2mi"):
             # print("Using FL2MI for subset selection!")
             obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
