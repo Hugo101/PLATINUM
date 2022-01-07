@@ -7,39 +7,49 @@ import math
 import time
 from collections import OrderedDict
 from torchmeta.utils import gradient_update_parameters
-from maml.utils import tensors_to_device, compute_accuracy, model_update
+from maml.utils import tensors_to_device, compute_accuracy
 from lib_SSL.config import config
 import pickle
 from configuration import arg_parser
 
 args = arg_parser.parse_args()
 
-# __all__ = ['ModelAgnosticMetaLearningBaseline', 'MAML', 'FOMAML']
-__all__ = ['ModelAgnosticMetaLearningBaseline']
+__all__ = ['ModelAgnosticMetaLearningComb']
 
-if args.ssl_algo == 'VAT':
-    print("SSL algorithm: VAT")
-    from lib_SSL.algs.vat import VAT
-    alg_cfg = config['VAT']
-    consis_coef = alg_cfg['consis_coef']
-    ssl_obj = VAT(alg_cfg["eps"]["svhn"], alg_cfg["xi"], 1)
+strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
+strategy_args['smi_function'] = args.sf
+strategy_args['optimizer'] = 'LazyGreedy'
+strategy_args['embedding_type'] = args.embedding_type
 
-if args.ssl_algo == 'PL':
-    print(f"##### SSL algorithm: PL (threshold), TrueLabel:{args.select_true_label}")
-    from lib_SSL.algs.pseudo_label import PL
-    alg_cfg = config['PL']
-    consis_coef = alg_cfg['consis_coef']
+if args.ssl_algo == 'SMI' and args.type_smi == "vanilla":
 
-    ssl_obj       = PL(args.num_ways, args.pl_threshold, args.pl_batch_size, args.select_true_label,
-                       args.scenario, args.verbose)
-    ssl_obj_outer = PL(args.num_ways, args.pl_threshold_outer, args.pl_batch_size, args.select_true_label,
-                       args.scenario, args.verbose)
-    # ssl_obj_joint = PL(args.num_ways, args.pl_threshold, args.select_true_label, args.scenario,
-    # args.verbose, support_unlabeled_avg_flag=True)
+    print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
+    print(f"outer loop: {args.no_outer_selection}")
 
+    # from lib_SSL.algs.smi_function import smi_pl_comb
+    # from lib_SSL.algs.smi_function_vanilla import smi_pl_comb
+    from lib_SSL.algs.smi_function_vanilla_v2 import SMIselection
+    ssl_obj       = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, True,
+                                 args.verbose)
+
+    ssl_obj_outer = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, False,
+                                 args.verbose)
+
+# elif args.ssl_algo == 'SMI' and args.type_smi == "rank":
+#     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
+#     # from lib_SSL.algs.smi_function import smi_pl_comb
+#     from lib_SSL.algs.smi_function_rank import smi_pl_comb
+#
+# elif args.ssl_algo == 'SMI' and args.type_smi == "gain":
+#     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
+#     # from lib_SSL.algs.smi_function import smi_pl_comb
+#     from lib_SSL.algs.smi_function_gain import smi_pl_comb
+
+
+# other baselines
 if args.ssl_algo == 'PLtopZ':
     from lib_SSL.algs.pseudo_label_topZ import PLtopZ
-    consis_coef = 1
+    # consis_coef = 1
 
     print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), "
           f"TrueLabel:{args.select_true_label}")
@@ -53,7 +63,7 @@ if args.ssl_algo == 'PLtopZ':
 
 if args.ssl_algo == 'PLtopZperClass':
     from lib_SSL.algs.pseudo_label_topZ_perClass import PLtopZ
-    consis_coef = 1
+    # consis_coef = 1
 
     print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), TrueLabel:{args.select_true_label}")
     # the last argument is the flag to determine whether per class selection or not
@@ -66,15 +76,28 @@ if args.ssl_algo == 'PLtopZperClass':
                            args.scenario, args.verbose, args.pl_threshold_outer)
 
 
+
+# debugging
+from lib_SSL.algs.pseudo_label_topZ_perClass import PLtopZ
+print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), TrueLabel:{args.select_true_label}")
+# the last argument is the flag to determine whether per class selection or not
+ssl_obj_pl       = PLtopZ(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
+                       args.scenario, args.verbose, args.pl_threshold)
+
+print(f"## SSL algorithm (outer loop: {args.no_outer_selection}): {args.ssl_algo} (TH:{args.pl_threshold_outer}), "
+      f"TrueLabel:{args.select_true_label}")
+ssl_obj_outer_pl = PLtopZ(args.num_ways, args.pl_num_topz_outer, args.pl_batch_size, args.select_true_label,
+                       args.scenario, args.verbose, args.pl_threshold_outer)
+
 WARMSTART_EPOCH = args.WARMSTART_EPOCH
 WARMSTART_ITER = 10000
-# consis_coef = 1
+consis_coef = 1
 consis_coef_outer = 1
 WARM = 0
 WARM_inner = 0
 WARM_inner_eval = 0
 
-class ModelAgnosticMetaLearningBaseline(object):
+class ModelAgnosticMetaLearningComb(object):
     def __init__(self, model, optimizer=None, step_size=0.1, first_order=False,
                  learn_step_size=False, per_param_step_size=False,
                  num_adaptation_steps=1,
@@ -220,6 +243,7 @@ class ModelAgnosticMetaLearningBaseline(object):
             # print(f"task_id:{task_id}, unlabeled targets: {unlabeled_targets}")
             # inner loop
             params, adaptation_results, selected_ids_inner_set = self.adapt(support_inputs, support_targets,
+                                                    query_inputs, query_targets,
                                                     unlabeled_inputs, unlabeled_targets,
                                                     is_classification_task=True,
                                                     num_adaptation_steps=num_adapt_steps,
@@ -227,6 +251,7 @@ class ModelAgnosticMetaLearningBaseline(object):
                                                     first_order=self.first_order,
                                                     meta_train=True,
                                                     coef=self.coef_inner,
+                                                    warm_step=WARM_inner,
                                                     progress=progress, sub_progress=sub_progress)
 
             results['inner_losses_labeled'][:, task_id] = adaptation_results['inner_losses_labeled']
@@ -249,15 +274,44 @@ class ModelAgnosticMetaLearningBaseline(object):
             if args.no_outer_selection:
                 loss_unlabeled, select_stat = 0, 0
             else:
-                # torch.cuda.empty_cache()
-                with torch.no_grad():
-                    outputs_unlabeled = self.model(unlabeled_inputs, params=params)
-                # torch.cuda.empty_cache()
-                loss_unlabeled, select_stat, selected_ids = ssl_obj_outer(unlabeled_inputs,
-                                                                            outputs_unlabeled.detach(),
-                                                                            self.model, params,
-                                                                            unlabeled_targets,
-                                                                            selected_ids_inner_set)
+                if args.ssl_algo == "PLtopZperClass":
+                    with torch.no_grad():
+                        outputs_unlabeled = self.model(unlabeled_inputs, params=params)
+                    # torch.cuda.empty_cache()
+                    loss_unlabeled, select_stat, selected_ids_outer = ssl_obj_outer(unlabeled_inputs,
+                                                                                    outputs_unlabeled.detach(),
+                                                                                    self.model, params,
+                                                                                    unlabeled_targets,
+                                                                                    selected_ids_inner_set)
+                elif args.ssl_algo == "SMI":
+                    ## debugging
+                    # with torch.no_grad():
+                    #     outputs_unlabeled = self.model(unlabeled_inputs, params=params)
+                    strategy_args['device'] = self.device
+                    strategy_args['budget'] = args.budget_q
+                    strategy_args['batch_size'] = args.num_ways*args.num_shots_unlabeled
+                    loss_unlabeled, select_stat, selected_ids_outer = ssl_obj_outer(support_inputs, support_targets,
+                                                                                    query_inputs, query_targets,
+                                                                                    unlabeled_inputs, unlabeled_targets,
+                                                                                    None,
+                                                                                    self.model, params,
+                                                                                    True,   # true means meta-train
+                                                                                    selected_ids_inner_set,
+                                                                                    strategy_args)
+
+                    # ## debugging
+                    # # self.model.eval()  # tmp
+                    # with torch.no_grad():
+                    #     outputs_unlabeled2 = self.model(unlabeled_inputs, params=params)
+                    # loss_unlabeled_pl, select_stat_pl, selected_ids_outer_pl = ssl_obj_outer_pl(unlabeled_inputs,
+                    #                                                                 outputs_unlabeled2.detach(),
+                    #                                                                 self.model, params,
+                    #                                                                 unlabeled_targets,
+                    #                                                                 selected_ids_inner_set)
+                    # # print("debug, PL.loss_unlabeled_pl", loss_unlabeled_pl)
+                    # # print("debug, PL.select_stat_pl", select_stat_pl)
+                    # print("debug, outer loop, PL.selected_ids_pl", selected_ids_outer_pl)
+                    # # ##
 
             print(f"******** TaskID:{task_id}, outloop SMI selection statistics: {select_stat}\n") if args.verbose else None
             if type(loss_unlabeled) == torch.Tensor:
@@ -282,7 +336,8 @@ class ModelAgnosticMetaLearningBaseline(object):
         return mean_outer_loss, results
 
 
-    def adapt(self, inputs, targets,
+    def adapt(self, support_inputs, support_targets,
+              query_inputs, query_targets,
               unlabeled_inputs, unlabeled_targets,
               is_classification_task=True,
               num_adaptation_steps=1,
@@ -290,6 +345,7 @@ class ModelAgnosticMetaLearningBaseline(object):
               first_order=False,
               meta_train=True,
               coef=0.01,                     # ssl
+              warm_step=0,
               progress=0, sub_progress=0):
 
         params = None
@@ -299,78 +355,89 @@ class ModelAgnosticMetaLearningBaseline(object):
                    'coef_inner': np.zeros(num_adaptation_steps, dtype=np.float32),
                    'stat_selected': [],
                    }
+
         selected_ids_inner = []
 
         for step in range(num_adaptation_steps):
             print(f"\n++++++ At Inner Step {step+1}:") if args.verbose else None
-            outputs_support = self.model(inputs, params=params)
+            outputs_support = self.model(support_inputs, params=params)
             # torch.cuda.empty_cache()
             # print("################# sleeping for 60 secs")
             # time.sleep(60)
             # print("################# wake up")
-            if self.support_unlabeled_avg:
-                print("++++++++++++ Calculate the mean loss of support set and selected unlabeled set.")
-                # losses_unlabeled, num_UN_SLT = ssl_obj_joint(inputs_labeled_unlabeled,
-                #                                              outputs_support_unlabeled.detach(),
-                #                                              self.model, params,
-                #                                              unlabeled_mask, targets_labeled_unlabeled)
-                # assert torch.count_nonzero(losses_unlabeled).item() == num_UN_SLT
-                #
-                # losses_support = self.loss_function(outputs_support_unlabeled, target, reduction="none",
-                #                                     ignore_index=-1)
-                #
-                # num_support_selected = torch.count_nonzero(losses_unlabeled).item() + \
-                #                        torch.count_nonzero(1 - unlabeled_mask).item()
-                # print(
-                #     f"++++++ At Step {step}: support loss vs. pseudo loss: {torch.sum(losses_support)} vs. {torch.sum(losses_unlabeled)}")
-                # print(f"++++++++++++ The size of    support set: {torch.count_nonzero(1 - unlabeled_mask).item()}")
-                # print(f"++++++++++++ The size of SLTed UnLB set: {torch.count_nonzero(losses_unlabeled).item()}")
-                # print(f"++++++++++++ The size of support set + SLTed UnLB set: {num_support_selected}")
-                #
-                # loss_support = torch.sum(losses_support) / num_support_selected
-                # loss_unlabeled = torch.sum(losses_unlabeled) / num_support_selected
-                # inner_loss = loss_support + loss_unlabeled
-                # results['inner_losses_labeled'][step] = loss_support.item()
-                # results['inner_losses_unlabeled'][step] = loss_unlabeled
-                # results['inner_losses'][step] = inner_loss
-            else:
-                # # SSL loss
-                if coef >= 0:
-                    coeff = coef
-                elif coef == -1:  # num_adaptation_steps
-                    coeff = consis_coef * math.exp(-5 * (1 - min(step / num_adaptation_steps, 1)) ** 2)
-                print(f"==============++++++++ coeff:{coeff}") if args.verbose else None
-                results['coef_inner'][step] = coeff
+            # # SSL loss
+            if coef >= 0:
+                coeff = coef
+            elif coef == -1:  # num_adaptation_steps
+                coeff = consis_coef * math.exp(-5 * (1 - min(step / num_adaptation_steps, 1)) ** 2)
+            print(f"==============++++++++ coeff:{coeff}") if args.verbose else None
+            results['coef_inner'][step] = coeff
 
-                if args.ssl_algo in ["PLtopZ", "PLtopZperClass", "PL", "VAT"]:
+            if args.ssl_algo == "MAML":
+                loss_unlabeled, select_stat = 0, 0
+            elif args.ssl_algo in ["PLtopZ", "PLtopZperClass"]:
+                if step < warm_step:
+                    loss_unlabeled, select_stat = 0, 0
+                else:
                     with torch.no_grad():
                         outputs_unlabeled = self.model(unlabeled_inputs, params=params)
                     loss_unlabeled, select_stat, selected_ids = ssl_obj(unlabeled_inputs,
-                                                                  outputs_unlabeled.detach(),
-                                                                  self.model, params,
-                                                                  unlabeled_targets)
+                                                                        outputs_unlabeled.detach(),
+                                                                        self.model, params,
+                                                                        unlabeled_targets)
                     selected_ids_inner.extend(selected_ids)
 
-                # several POC setting
-                elif args.ssl_algo in ["mamlLargeQ", "mamlLargeS", "mamlLargeSandQ", "largeSandQDiff", "MAML"]:
+            elif args.ssl_algo == "SMI":  # SMI
+                if step < warm_step:
                     loss_unlabeled, select_stat = 0, 0
+                else:
+                    # ## debugging
+                    # with torch.no_grad():
+                    #     outputs_unlabeled = self.model(unlabeled_inputs, params=params)
 
-                torch.cuda.empty_cache()
-                # # Supervised Loss
-                loss_support = self.loss_function(outputs_support, targets, reduction="mean")
-                inner_loss = loss_support + loss_unlabeled * coeff
-                results['inner_losses_labeled'][step] = loss_support.item()
-                results['inner_losses_unlabeled'][step] = loss_unlabeled
-                results['inner_losses'][step] = inner_loss
-                results['stat_selected'].append(select_stat)
+                    strategy_args['device'] = self.device
+                    strategy_args['budget'] = args.budget_s
+                    if meta_train:
+                        strategy_args['batch_size'] = args.num_ways * args.num_shots_unlabeled
+                    else:
+                        strategy_args['batch_size'] = args.num_ways * args.num_shots_unlabeled_evaluate
+                    loss_unlabeled, select_stat, selected_ids = ssl_obj(support_inputs, support_targets,
+                                                                        query_inputs, query_targets,
+                                                                        unlabeled_inputs, unlabeled_targets,
+                                                                        None,
+                                                                        self.model, params,
+                                                                        meta_train, # true means meta-train
+                                                                        [],
+                                                                        strategy_args)
+                    selected_ids_inner.extend(selected_ids)
+
+                    # ## debugging
+                    # # self.model.eval() # tmp
+                    # with torch.no_grad():
+                    #     outputs_unlabeled2 = self.model(unlabeled_inputs, params=params)
+                    # loss_unlabeled_pl, select_stat_pl, selected_ids_pl = ssl_obj_pl(unlabeled_inputs,
+                    #                                                     outputs_unlabeled2.detach(),
+                    #                                                     self.model, params,
+                    #                                                     unlabeled_targets)
+                    # print("debug, PL.selected_ids_pl", selected_ids_pl)
+                    # # ##
+
+            torch.cuda.empty_cache()
+            # # Supervised Loss
+            loss_support = self.loss_function(outputs_support, support_targets, reduction="mean")
+            inner_loss = loss_support + loss_unlabeled * coeff
+            results['inner_losses_labeled'][step] = loss_support.item()
+            results['inner_losses_unlabeled'][step] = loss_unlabeled
+            results['inner_losses'][step] = inner_loss
+            results['stat_selected'].append(select_stat)
 
             if (step == 0) and is_classification_task:
                 # acc before inner loop training 10-14-2021
-                results['accuracy_before'] = compute_accuracy(outputs_support, targets)
+                results['accuracy_before'] = compute_accuracy(outputs_support, support_targets)
 
             if (step == num_adaptation_steps-1) and is_classification_task:
                 # acc for support set after inner loop training
-                results['accuracy_support'] = compute_accuracy(outputs_support, targets)
+                results['accuracy_support'] = compute_accuracy(outputs_support, support_targets)
 
             self.model.zero_grad()
             params = gradient_update_parameters(self.model, inner_loss,
@@ -409,13 +476,16 @@ class ModelAgnosticMetaLearningBaseline(object):
         for task_id, (support_inputs, support_targets, query_inputs, query_targets, unlabeled_inputs, unlabeled_targets) \
                 in enumerate(zip(*batch['train'], *batch['test'], *batch['unlabeled'])):
             params, adaptation_results, _ = self.adapt(support_inputs, support_targets,
-                                                    unlabeled_inputs, unlabeled_targets,
-                                                    is_classification_task=True,
-                                                    num_adaptation_steps=num_adapt_steps, step_size=self.step_size,
-                                                    first_order=self.first_order,
-                                                    meta_train=False,
-                                                    coef=self.coef_inner,
-                                                    progress=progress)
+                                                       None, None,
+                                                       unlabeled_inputs, unlabeled_targets,
+                                                       is_classification_task=True,
+                                                       num_adaptation_steps=num_adapt_steps,
+                                                       step_size=self.step_size,
+                                                       first_order=self.first_order,
+                                                       meta_train=False,
+                                                       coef=self.coef_inner,
+                                                       warm_step=WARM_inner_eval,
+                                                       progress=progress)
 
             results['inner_losses_labeled'][:, task_id] = adaptation_results['inner_losses_labeled']
             results['inner_losses_unlabeled'][:, task_id] = adaptation_results['inner_losses_unlabeled']
@@ -469,6 +539,7 @@ class ModelAgnosticMetaLearningBaseline(object):
                     print("\ninner loss (labeled): \n{}".format(results['inner_losses_labeled']))
                     print("inner loss (unlabeled): \n{}".format(results['inner_losses_unlabeled']))
                     print("inner loss (labeled+unlabeled):\n{}".format(results['inner_losses']))
+
                     print("inner loss stat_selected:\n{}".format(results['stat_selected']))
                     print("coeffcient in the inner loop:\n{}\n".format(results['coef_inner']))
 
@@ -496,7 +567,7 @@ class ModelAgnosticMetaLearningBaseline(object):
 
                 num_batches += 1
 
-#
+
 # MAML = ModelAgnosticMetaLearning
 #
 #

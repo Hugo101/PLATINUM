@@ -123,7 +123,7 @@ def smi_function(support_inputs, support_targets,
 
     select_idx = []
     select_pls = []
-    # select_gains = []
+    select_gains = []
     # per class for loop
     for i in range(num_cls):
         # Find indices of the val_set which have samples from class i
@@ -155,18 +155,20 @@ def smi_function(support_inputs, support_targets,
         greedyList = obj.maximize(budget=budget_per_class, optimizer="LazyGreedy", stopIfZeroGain=False,
                                   stopIfNegativeGain=False, verbose=False)
         subset_idx_for_the_class = [x[0] for x in greedyList]
-        # selected_idx_class_gain = [x[1] for x in greedyList]
+        selected_idx_class_gain = [x[1] for x in greedyList]
 
         # smi selection for class i
         # strategy_sel = SMI(train_set, unlabeled_set, val_class_subset, model, num_cls, strategy_args)
         # subset_idx_for_the_class = strategy_sel.select(budget_all)
         # subset_idx_for_the_class, selected_idx_class_gain = strategy_sel.select(budget_all)
         select_idx.extend(subset_idx_for_the_class)
+        select_gains.extend(selected_idx_class_gain)
         # a list, store smi pseudo labels as the current class of query_class_subset
         select_pls.extend([i]*budget_per_class)
 
     # select_idx, select_pls = remove_overlap(select_idx, select_pls, budget_per_class)
-    return select_idx, select_pls
+    select_gains_5 = [float("%.5f"%i) for i in select_gains]
+    return select_idx, select_pls, select_gains_5
 
 
 def __make_one_hot(y, n_classes=3):  # todo: attention to the dimension
@@ -175,7 +177,7 @@ def __make_one_hot(y, n_classes=3):  # todo: attention to the dimension
 
 # to add unlabel_outputs if to consider the the pseudo labels given from the model (in case)
 def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
-                selected_idx, selected_pseudolabels,
+                selected_idx, selected_pseudolabels, selected_gains,
                 model, params,
                 num_cls, is_select_true_label,
                 scenario,
@@ -196,7 +198,9 @@ def smi_pl_loss(unlabeled_inputs, unlabeled_targets,
         # ====== log the selection statistics
         selected_targets = unlabeled_targets[selected_idx]     # todo: check the index whether matched or not
         num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)
-        select_stat = "{}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate, num_select, num_unlabeled, num_oods_select)
+        select_stat = "{}, {}, {}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate,
+                                                          num_select, num_unlabeled, num_oods_select,
+                                                          selected_targets.cpu().numpy(), selected_gains)
         print(f"+++++ Some statistics in the selection: {select_stat}") if verbose else None
         # ======
 
@@ -236,7 +240,7 @@ def smi_pl_comb(support_inputs, support_targets,
         unlabeled_targets = unlabeled_targets[rest_indices]
 
     # 1. get the index and pseudo labels of selected samples
-    selected_idx, selected_pseudolabels = smi_function(support_inputs, support_targets,
+    selected_idx, selected_pseudolabels, selected_gains = smi_function(support_inputs, support_targets,
                                                        query_inputs, query_targets,
                                                        unlabel_inputs, unlabeled_targets,
                                                        selection_option,
@@ -252,7 +256,7 @@ def smi_pl_comb(support_inputs, support_targets,
 
     # 2. calculate the loss of the selected unlabeled set
     loss_unlabel, select_stat = smi_pl_loss(unlabel_inputs, unlabeled_targets,
-                                                    selected_idx_tensor, selected_pseudolabels,
+                                                    selected_idx_tensor, selected_pseudolabels, selected_gains,
                                                     model, params,
                                                     num_cls, is_select_true_label,
                                                     scenario,

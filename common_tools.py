@@ -59,11 +59,13 @@ def set_logger(log_file, mode):
 
 
 def set_random_seeds(seed=1):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)  # CPU
     torch.cuda.manual_seed(seed)  # current GPU
-    torch.cuda.manual_seed_all(seed)  # all
+    torch.cuda.manual_seed_all(seed)  # all， # if you are using multi-GPU.
     if torch.cuda.is_available():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
