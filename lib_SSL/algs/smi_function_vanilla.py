@@ -7,6 +7,7 @@ from trust.trust.strategies.strategy import Strategy
 from trust.trust.utils.utils import *
 import submodlib
 import numpy as np
+
 def remove_overlap(groups, groups_pseudolabels, budget_class):
     '''
     :param groups: the original bigger selected examples for each class, [[],[],[],[],[]]
@@ -113,9 +114,9 @@ def smi_function(support_inputs, support_targets,
     # compute embeddings of the unlabeled set out the class loop
     strategy_obj = Strategy(train_set, unlabeled_set, model, num_cls, strategy_args)
     if(embedding_type == "gradients"):
-        unlabeled_data_embedding = strategy_obj.get_grad_embedding(unlabeled_set, True, "bias_linear")  # (250,8005)
+        unlabeled_data_embedding = strategy_obj.get_grad_embedding(unlabeled_set, True, "bias_linear")
     else: #use class scores
-        unlabeled_data_embedding = strategy_obj.get_class_scores(unlabeled_set)   # (250,5)
+        unlabeled_data_embedding = strategy_obj.get_class_scores(unlabeled_set)
 
     # budget_all = int(strategy_args['budget'])
     budget_per_class = int(strategy_args['budget'] / num_cls)
@@ -126,18 +127,19 @@ def smi_function(support_inputs, support_targets,
     # per class for loop
     for i in range(num_cls):
         # Find indices of the val_set which have samples from class i
-        val_class_idx = torch.where(smi_query_set.target == i)[0]  # (20,)
+        val_class_idx = torch.where(smi_query_set.target == i)[0]
         val_class_subset = Subset(smi_query_set, val_class_idx)
 
         if(embedding_type == "gradients"):
-            smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")  # 20,8005
+            smi_query_data_embedding = strategy_obj.get_grad_embedding(val_class_subset, False, "bias_linear")
+            query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
+                                                        X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
+                                                        method="sklearn")
         else: #use class scores
             smi_query_data_embedding = torch.zeros(1, num_cls)
             smi_query_data_embedding[0][i] = 1
-        # query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
-        #                                             X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
-        #                                             method="sklearn")   # 250,20 for embedding_type gradients, 250,1 for class score
-        query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+            query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+            
         if(smi_function == "fl2mi"):
             # print("Using FL2MI for subset selection!")
             obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
@@ -146,8 +148,8 @@ def smi_function(support_inputs, support_targets,
                                                                       queryDiversityEta=1)
         if(smi_function == "gcmi"):
             # print("Using GCMI for subset selection!")
-            obj = submodlib.GraphCutMutualInformationFunction(n=unlabeled_data_embedding.shape[0],   # 250
-                                                                      num_queries=smi_query_data_embedding.shape[0],  # 1
+            obj = submodlib.GraphCutMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+                                                                      num_queries=smi_query_data_embedding.shape[0], 
                                                                       query_sijs=query_sijs,
                                                                       metric="cosine")
         greedyList = obj.maximize(budget=budget_per_class, optimizer="LazyGreedy", stopIfZeroGain=False,
