@@ -38,7 +38,6 @@ class SMIselection(nn.Module):
         #     unlabel_inputs = unlabel_inputs[rest_indices]
         #     unlabeled_targets = unlabeled_targets[rest_indices]
 
-
         # if excluded:
         #     rest_mask = torch.ones_like(unlabeled_targets)
         #     rest_mask[list(excluded)] = 0
@@ -126,8 +125,6 @@ class SMIselection(nn.Module):
         #     unlabeled_data_embedding = model(unlabel_inputs, params=params)
         # unlabeled_data_embedding = unlabeled_data_embedding.softmax(1)
 
-
-
         # budget_all = int(strategy_args['budget'])
         budget_per_class = int(strategy_args['budget'] / self.num_cls)
 
@@ -142,13 +139,18 @@ class SMIselection(nn.Module):
 
             if(embedding_type == "gradients"):
                 smi_query_data_embedding = strategy_obj.get_grad_embedding(params, val_class_subset, False, "bias_linear")  # 20,8005
+                query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
+                                                            X_rep=unlabeled_data_embedding.cpu().numpy(),
+                                                            metric="cosine",
+                                                            method="sklearn")  # 250,20 for embedding_type gradients
             else: #use class scores
                 smi_query_data_embedding = torch.zeros(1, self.num_cls)
                 smi_query_data_embedding[0][i] = 1
             # query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
             #                                             X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
             #                                             method="sklearn")   # 250,20 for embedding_type gradients, 250,1 for class score
-            query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+                query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+
             if(smi_function == "fl2mi"):
                 # print("Using FL2MI for subset selection!")
                 obj = submodlib.FacilityLocationVariantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
