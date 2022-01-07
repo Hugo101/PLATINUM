@@ -24,7 +24,7 @@ class PLtopZ(nn.Module):
 
         # step 1: top Z selection (per class topZ)
         budget_per_class = self.topZ // self.num_cls
-        _, selected_idx_tensor = torch.topk(y_probs, budget_per_class, dim=0, largest=True, sorted=True)
+        selected_scores, selected_idx_tensor = torch.topk(y_probs, budget_per_class, dim=0, largest=True, sorted=True)
         selected_idx = selected_idx_tensor.t().reshape(-1).detach()
         selected_pls = []
         for i in range(self.num_cls):
@@ -46,12 +46,13 @@ class PLtopZ(nn.Module):
             # ====== log the selection statistics
             selected_targets = unlabeled_targets[selected_idx]  # todo: check the index whether matched or not
             num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)
-            select_stat = "{}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate, num_select,
-                                                      num_unlabeled, num_oods_select)
+            select_stat = "{}, {}, {}, {}, {}, {}".format(num_selected_correct, num_select_wo_duplicate, num_select,
+                                                      num_unlabeled, num_oods_select, selected_scores)
             print(f"+++++ Some statistics in the selection: {select_stat}") if self.verbose else None
             # ======
 
         selected_unlabel_samples = unlabeled_inputs[selected_idx]
+        # model.train() # tmp
         select_output = model(selected_unlabel_samples, params=params)
         if self.select_true_label:
             p_target = self.__make_one_hot(selected_targets, self.num_cls)
@@ -60,7 +61,7 @@ class PLtopZ(nn.Module):
         losses_selected = -(p_target.detach() * F.log_softmax(select_output, 1)).sum(1)
         loss_selected = torch.sum(losses_selected) / len(selected_idx)
 
-        print("+++++ the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
+        print("+++++ PL the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
         return loss_selected, select_stat, selected_idx.cpu().numpy()
 
 

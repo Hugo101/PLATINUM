@@ -13,9 +13,11 @@ import common_tools as ct
 
 from datasets_meta.dataloader_meta import BatchMetaDataLoader
 from maml.datasets_benchmark import get_benchmark_by_name
-from maml.metalearners import ModelAgnosticMetaLearning, ModelAgnosticMetaLearningBaseline
+from maml.metalearners import ModelAgnosticMetaLearning, ModelAgnosticMetaLearningBaseline, ModelAgnosticMetaLearningComb
 
 args = arg_parser.parse_args()
+
+ct.set_random_seeds(args.seed)
 
 INTERVAL = 50
 INTERVAL_VAL = args.interval_val
@@ -68,28 +70,40 @@ def maml_ssl_main(args, device):
 
     meta_optimizer = torch.optim.Adam(benchmark.model.parameters(), lr=args.meta_lr)
 
-    if args.ssl_algo == "SMI":
-        metalearner = ModelAgnosticMetaLearning(benchmark.model,
-                                                meta_optimizer,
-                                                step_size=args.step_size,
-                                                first_order=args.first_order,
-                                                num_adaptation_steps=args.num_steps,
-                                                num_adaptation_steps_test=args.num_steps_evaluate,
-                                                loss_function=benchmark.loss_function,
-                                                coef_inner=args.coef_inner,
-                                                coef_outer=args.coef_outer,
-                                                device=device)
-    else:
-        metalearner = ModelAgnosticMetaLearningBaseline(benchmark.model,
-                                                meta_optimizer,
-                                                step_size=args.step_size,
-                                                first_order=args.first_order,
-                                                num_adaptation_steps=args.num_steps,
-                                                num_adaptation_steps_test=args.num_steps_evaluate,
-                                                loss_function=benchmark.loss_function,
-                                                coef_inner=args.coef_inner,
-                                                coef_outer=args.coef_outer,
-                                                device=device)
+    # debugging
+    metalearner = ModelAgnosticMetaLearningComb(benchmark.model,
+                                            meta_optimizer,
+                                            step_size=args.step_size,
+                                            first_order=args.first_order,
+                                            num_adaptation_steps=args.num_steps,
+                                            num_adaptation_steps_test=args.num_steps_evaluate,
+                                            loss_function=benchmark.loss_function,
+                                            coef_inner=args.coef_inner,
+                                            coef_outer=args.coef_outer,
+                                            device=device)
+
+    # if args.ssl_algo == "SMI":
+    #     metalearner = ModelAgnosticMetaLearning(benchmark.model,
+    #                                             meta_optimizer,
+    #                                             step_size=args.step_size,
+    #                                             first_order=args.first_order,
+    #                                             num_adaptation_steps=args.num_steps,
+    #                                             num_adaptation_steps_test=args.num_steps_evaluate,
+    #                                             loss_function=benchmark.loss_function,
+    #                                             coef_inner=args.coef_inner,
+    #                                             coef_outer=args.coef_outer,
+    #                                             device=device)
+    # else:
+    #     metalearner = ModelAgnosticMetaLearningBaseline(benchmark.model,
+    #                                             meta_optimizer,
+    #                                             step_size=args.step_size,
+    #                                             first_order=args.first_order,
+    #                                             num_adaptation_steps=args.num_steps,
+    #                                             num_adaptation_steps_test=args.num_steps_evaluate,
+    #                                             loss_function=benchmark.loss_function,
+    #                                             coef_inner=args.coef_inner,
+    #                                             coef_outer=args.coef_outer,
+    #                                             device=device)
 
     best_value = None
 
