@@ -24,7 +24,7 @@ class SMIselection(nn.Module):
 
     def forward(self, support_inputs, support_targets,
                 query_inputs, query_targets,
-                unlabel_inputs, unlabeled_targets,
+                unlabeled_inputs, unlabeled_targets,
                 outputs_unlabeled,
                 model, params,
                 meta_train,
@@ -32,27 +32,22 @@ class SMIselection(nn.Module):
                 strategy_args={}):
 
         # # 0.: first remove the unlabeled examples from the excluded_set (for outer loop selection)
-        # if excluded:
-        #     unlabeled_size = len(unlabeled_targets)  # original size of unlabeled set
-        #     rest_indices = list(set(list(range(unlabeled_size))) - excluded)
-        #     unlabel_inputs = unlabel_inputs[rest_indices]
-        #     unlabeled_targets = unlabeled_targets[rest_indices]
-
-        # if excluded:
-        #     rest_mask = torch.ones_like(unlabeled_targets)
-        #     rest_mask[list(excluded)] = 0
-        #     outputs_unlabeled = outputs_unlabeled * rest_mask[:, None]
+        if excluded:
+            unlabeled_size = len(unlabeled_targets)  # original size of unlabeled set
+            rest_indices = list(set(list(range(unlabeled_size))) - set(excluded))
+            unlabeled_inputs = unlabeled_inputs[rest_indices]
+            unlabeled_targets = unlabeled_targets[rest_indices]
+            strategy_args['batch_size'] = len(rest_indices)
 
         # 1. get the index and pseudo labels of selected samples
         # model_smi_copy = copy.deepcopy(model)  # Deep copy the other exactly the same model
         # model_smi_copy = model_update(model_smi_copy, params)  # update model for this step # VITAL!!!
         selected_idx, selected_pseudolabels, selected_gains = self.smi_select(support_inputs, support_targets,
                                                                               query_inputs, query_targets,
-                                                                              unlabel_inputs, unlabeled_targets,
+                                                                              unlabeled_inputs, unlabeled_targets,
                                                                               outputs_unlabeled,
                                                                               None,
                                                                               model, params,
-                                                                              excluded,
                                                                               meta_train=meta_train,
                                                                               strategy_args=strategy_args)
         print("\nselected indices: ", selected_idx) if self.verbose else None
@@ -61,9 +56,9 @@ class SMIselection(nn.Module):
         selected_pseudolabels = torch.tensor(selected_pseudolabels).to(strategy_args['device'])  # Tensor:(30,)
 
         # 2. calculate the loss of the selected unlabeled set
-        loss_unlabel, select_stat = self.smi_pl_loss(unlabel_inputs, unlabeled_targets,
+        loss_unlabel, select_stat = self.smi_pl_loss(unlabeled_inputs, unlabeled_targets,
                                                 selected_idx_tensor, selected_pseudolabels, selected_gains,
-                                                model, params, excluded)
+                                                model, params)
 
         return loss_unlabel, select_stat, selected_idx
 
@@ -73,11 +68,10 @@ class SMIselection(nn.Module):
 
     def smi_select(self, support_inputs, support_targets,
                    query_inputs, query_targets,
-                   unlabel_inputs, unlabeled_targets,
+                   unlabeled_inputs, unlabeled_targets,
                    unlabeled_data_embedding,
                    model_smi_copy,
                    model, params,
-                   excluded,
                    meta_train=True,
                    strategy_args={}):
 
@@ -104,7 +98,7 @@ class SMIselection(nn.Module):
             # train_set = DatasetAugment(support_inputs, support_targets)
             smi_query_set = DatasetSMI(support_inputs, support_targets)
 
-        unlabeled_set = DatasetSMI(unlabel_inputs, unlabeled_targets)
+        unlabeled_set = DatasetSMI(unlabeled_inputs, unlabeled_targets)
         unlabeled_set = LabeledToUnlabeledDataset(unlabeled_set)
 
         smi_function = strategy_args['smi_function'] if 'smi_function' in strategy_args else "fl2mi"
@@ -117,12 +111,8 @@ class SMIselection(nn.Module):
         else: #use class scores
             unlabeled_data_embedding = strategy_obj.get_class_scores(params, unlabeled_set)   # (250,5)
 
-        if excluded:
-            rest_mask = torch.ones_like(unlabeled_targets)
-            rest_mask[list(excluded)] = 0
-            unlabeled_data_embedding = unlabeled_data_embedding * rest_mask[:, None]
         # with torch.no_grad():
-        #     unlabeled_data_embedding = model(unlabel_inputs, params=params)
+        #     unlabeled_data_embedding = model(unlabeled_inputs, params=params)
         # unlabeled_data_embedding = unlabeled_data_embedding.softmax(1)
 
         # budget_all = int(strategy_args['budget'])
@@ -149,7 +139,8 @@ class SMIselection(nn.Module):
             # query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(),
             #                                             X_rep=unlabeled_data_embedding.cpu().numpy(), metric="cosine",
             #                                             method="sklearn")   # 250,20 for embedding_type gradients, 250,1 for class score
-                query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(), unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
+                query_sijs = np.tensordot(smi_query_data_embedding.cpu().numpy(),
+                                          unlabeled_data_embedding.cpu().numpy(), axes=([1], [1])).T
 
             if(smi_function == "fl2mi"):
                 # print("Using FL2MI for subset selection!")
@@ -184,13 +175,13 @@ class SMIselection(nn.Module):
     # to add unlabel_outputs if to consider the the pseudo labels given from the model (in case)
     def smi_pl_loss(self, unlabeled_inputs, unlabeled_targets,
                     selected_idx, selected_pseudolabels, selected_gains,
-                    model, params, excluded):
+                    model, params):
 
         gt_mask = torch.zeros_like(unlabeled_targets)
         gt_mask[selected_idx.long()] = 1  # make the selected index as 1
         # intermediate results
         # num_unlabeled = len(unlabeled_targets)
-        num_unlabeled = len(unlabeled_targets) - len(excluded)
+        num_unlabeled = len(unlabeled_targets)
         num_select = len(selected_idx)
         num_select_wo_duplicate = gt_mask.sum(0)
         num_oods_select = 0

@@ -275,18 +275,12 @@ class ModelAgnosticMetaLearningComb(object):
                 loss_unlabeled, select_stat = 0, 0
             else:
                 if args.ssl_algo == "PLtopZperClass":
-                    with torch.no_grad():
-                        outputs_unlabeled = self.model(unlabeled_inputs, params=params)
                     # torch.cuda.empty_cache()
                     loss_unlabeled, select_stat, selected_ids_outer = ssl_obj_outer(unlabeled_inputs,
-                                                                                    outputs_unlabeled.detach(),
                                                                                     self.model, params,
                                                                                     unlabeled_targets,
                                                                                     selected_ids_inner_set)
                 elif args.ssl_algo == "SMI":
-                    ## debugging
-                    # with torch.no_grad():
-                    #     outputs_unlabeled = self.model(unlabeled_inputs, params=params)
                     strategy_args['device'] = self.device
                     strategy_args['budget'] = args.budget_q
                     strategy_args['batch_size'] = args.num_ways*args.num_shots_unlabeled
@@ -300,16 +294,10 @@ class ModelAgnosticMetaLearningComb(object):
                                                                                     strategy_args)
 
                     # ## debugging
-                    # # self.model.eval()  # tmp
-                    # with torch.no_grad():
-                    #     outputs_unlabeled2 = self.model(unlabeled_inputs, params=params)
                     # loss_unlabeled_pl, select_stat_pl, selected_ids_outer_pl = ssl_obj_outer_pl(unlabeled_inputs,
-                    #                                                                 outputs_unlabeled2.detach(),
                     #                                                                 self.model, params,
                     #                                                                 unlabeled_targets,
                     #                                                                 selected_ids_inner_set)
-                    # # print("debug, PL.loss_unlabeled_pl", loss_unlabeled_pl)
-                    # # print("debug, PL.select_stat_pl", select_stat_pl)
                     # print("debug, outer loop, PL.selected_ids_pl", selected_ids_outer_pl)
                     # # ##
 
@@ -379,10 +367,7 @@ class ModelAgnosticMetaLearningComb(object):
                 if step < warm_step:
                     loss_unlabeled, select_stat = 0, 0
                 else:
-                    with torch.no_grad():
-                        outputs_unlabeled = self.model(unlabeled_inputs, params=params)
                     loss_unlabeled, select_stat, selected_ids = ssl_obj(unlabeled_inputs,
-                                                                        outputs_unlabeled.detach(),
                                                                         self.model, params,
                                                                         unlabeled_targets)
                     selected_ids_inner.extend(selected_ids)
@@ -391,10 +376,6 @@ class ModelAgnosticMetaLearningComb(object):
                 if step < warm_step:
                     loss_unlabeled, select_stat = 0, 0
                 else:
-                    # ## debugging
-                    # with torch.no_grad():
-                    #     outputs_unlabeled = self.model(unlabeled_inputs, params=params)
-
                     strategy_args['device'] = self.device
                     strategy_args['budget'] = args.budget_s
                     if meta_train:
@@ -412,11 +393,7 @@ class ModelAgnosticMetaLearningComb(object):
                     selected_ids_inner.extend(selected_ids)
 
                     # ## debugging
-                    # # self.model.eval() # tmp
-                    # with torch.no_grad():
-                    #     outputs_unlabeled2 = self.model(unlabeled_inputs, params=params)
                     # loss_unlabeled_pl, select_stat_pl, selected_ids_pl = ssl_obj_pl(unlabeled_inputs,
-                    #                                                     outputs_unlabeled2.detach(),
                     #                                                     self.model, params,
                     #                                                     unlabeled_targets)
                     # print("debug, PL.selected_ids_pl", selected_ids_pl)

@@ -15,12 +15,23 @@ class PLtopZ(nn.Module):
         self.entropy = False
         self.batch_size = batch_size
 
-    def forward(self, unlabeled_inputs, y_output, model, params, unlabeled_targets, excluded=[]):
-        y_probs = y_output.softmax(1)  # predicted logits for unlabeled set
-        rest_mask = torch.ones_like(unlabeled_targets)
+    def forward(self, unlabeled_inputs, model, params, unlabeled_targets, excluded=[]):
+        # 0.: first remove the unlabeled examples from the excluded_set (for outer loop selection)
         if excluded:
-            rest_mask[list(excluded)] = 0
-            y_probs = y_probs * rest_mask[:, None]
+            unlabeled_size = len(unlabeled_targets)  # original size of unlabeled set
+            rest_indices = list(set(list(range(unlabeled_size))) - set(excluded))
+            unlabeled_inputs = unlabeled_inputs[rest_indices]
+            unlabeled_targets = unlabeled_targets[rest_indices]
+
+        # self.model.eval() # tmp
+        with torch.no_grad():
+            outputs_unlabeled = model(unlabeled_inputs, params=params)
+        y_probs = outputs_unlabeled.detach().softmax(1)  # predicted logits for unlabeled set
+
+        # if excluded:
+        #     rest_mask = torch.ones_like(unlabeled_targets)
+        #     rest_mask[list(excluded)] = 0
+        #     y_probs = y_probs * rest_mask[:, None]
 
         # step 1: top Z selection (per class topZ)
         budget_per_class = self.topZ // self.num_cls
@@ -34,7 +45,7 @@ class PLtopZ(nn.Module):
         gt_mask = torch.zeros_like(unlabeled_targets)  # used to store the indices of final selected examples
         gt_mask[selected_idx] = 1   # the positions of selected samples are assigned to be 1, 0 otherwise
 
-        num_unlabeled = len(unlabeled_targets) - len(excluded)
+        num_unlabeled = len(unlabeled_targets)
         num_select = len(selected_idx)
         num_select_wo_duplicate = gt_mask.sum(0)
         num_oods_select = 0
@@ -61,7 +72,7 @@ class PLtopZ(nn.Module):
         losses_selected = -(p_target.detach() * F.log_softmax(select_output, 1)).sum(1)
         loss_selected = torch.sum(losses_selected) / len(selected_idx)
 
-        print("+++++ PL the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
+        print("+++++ PLtopZperClass the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
         return loss_selected, select_stat, selected_idx.cpu().numpy()
 
 
