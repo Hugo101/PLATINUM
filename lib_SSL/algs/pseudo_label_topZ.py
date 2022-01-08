@@ -15,15 +15,19 @@ class PLtopZ(nn.Module):
         self.entropy = False
         self.batch_size = batch_size
 
-    def forward(self, x, y_output, model, params, unlabeled_targets, excluded=[]):
-        y_probs = y_output.softmax(1)  # predicted logits for unlabeled set
-        onehot_label_pred = self.__make_one_hot(y_probs.max(1)[1], self.num_cls).float()  # predicated one-hot label
-        rest_mask = torch.ones_like(unlabeled_targets)
+    def forward(self, unlabeled_inputs, model, params, unlabeled_targets, excluded=[]):
+        # 0.: first remove the unlabeled examples from the excluded_set (for outer loop selection)
         if excluded:
-            rest_mask[list(excluded)] = 0
-            onehot_label_pred = onehot_label_pred * rest_mask[:, None]
-            y_probs = y_probs * rest_mask[:, None]
+            unlabeled_size = len(unlabeled_targets)  # original size of unlabeled set
+            rest_indices = list(set(list(range(unlabeled_size))) - set(excluded))
+            unlabeled_inputs = unlabeled_inputs[rest_indices]
+            unlabeled_targets = unlabeled_targets[rest_indices]
 
+        # self.model.eval() # tmp
+        with torch.no_grad():
+            outputs_unlabeled = model(unlabeled_inputs, params=params)
+        y_probs = outputs_unlabeled.detach().softmax(1)  # predicted logits for unlabeled set
+        onehot_label_pred = self.__make_one_hot(y_probs.max(1)[1], self.num_cls).float()  # predicated one-hot label
         gt_mask = torch.zeros_like(unlabeled_targets)   # used to store the indices of final selected examples
 
         # step 1: top Z selection
@@ -37,7 +41,7 @@ class PLtopZ(nn.Module):
             gt_mask = (y_probs > self.threshold).float()
             gt_mask = gt_mask.max(1)[0]  # 0: all prediction < th, 1: > th, 1 denotes potential selected
 
-        num_unlabeled = len(unlabeled_targets) - len(excluded)
+        num_unlabeled = len(unlabeled_targets)
         num_select = len(selected_idx)
         num_select_wo_duplicate = gt_mask.sum(0)
 
@@ -78,7 +82,6 @@ class PLtopZ(nn.Module):
             print(f"+++++ Some statistics in the selection: {select_stat}") if self.verbose else None
             # ======
 
-
         if self.entropy:
             lt_mask = 1 - gt_mask  # logical not
             # if lt_mask is always 0, then this is cross entropy completely and exactly
@@ -94,18 +97,9 @@ class PLtopZ(nn.Module):
                 p_target = gt_mask[:, None] * onehot_label_pred
 
         torch.cuda.empty_cache()
-        output = model(x, params=params)  # only one batch
-
-        # output = []
-        # for i in range(0, x.shape[0], self.batch_size):
-        #     if i+self.batch_size > x.shape[0]:
-        #         batch_x = x[i:]
-        #     else:
-        #         batch_x = x[i:i+self.batch_size]
-        #     tmp = model(batch_x, params=params)
-        #     output.append(tmp)
-        # output = torch.cat(output)
-
+        # selected_unlabel_samples = unlabeled_inputs[selected_idx]
+        # model.train() # tmp
+        output = model(unlabeled_inputs, params=params)  # only one batch
         losses_selected = -(p_target.detach() * F.log_softmax(output, 1)).sum(1)
 
         if self.entropy:
@@ -116,7 +110,7 @@ class PLtopZ(nn.Module):
             else:
                 loss_selected = torch.sum(losses_selected) / num_select
 
-        print("+++++ the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
+        print("+++++ PLtopZ the SSL loss : {:.8f}.\n".format(loss_selected)) if self.verbose else None
         return loss_selected, select_stat, selected_idx.cpu().numpy()
 
 
