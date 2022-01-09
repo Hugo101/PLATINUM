@@ -133,6 +133,11 @@ class SMIselection(nn.Module):
                                                             X_rep=unlabeled_data_embedding.cpu().numpy(),
                                                             metric="cosine",
                                                             method="sklearn")  # 250,20 for embedding_type gradients
+                if(smi_function == "fl1mi" or smi_function == "logdetmi"):
+                    data_sijs = submodlib.helper.create_kernel(X=unlabeled_data_embedding.cpu().numpy(), metric="cosine", method="sklearn")
+                if(smi_function == "logdetmi"):
+                    query_query_sijs = submodlib.helper.create_kernel(X=smi_query_data_embedding.cpu().numpy(), metric="cosine", method="sklearn")
+                
             else: #use class scores
                 smi_query_data_embedding = torch.zeros(1, self.num_cls)
                 smi_query_data_embedding[0][i] = 1
@@ -154,6 +159,23 @@ class SMIselection(nn.Module):
                                                                           num_queries=smi_query_data_embedding.shape[0],  # 1
                                                                           query_sijs=query_sijs,
                                                                           metric="cosine")
+            
+            if(smi_function == "fl1mi"):
+                obj = submodlib.FacilityLocationMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+                                                                      num_queries=smi_query_data_embedding.shape[0], 
+                                                                      data_sijs=data_sijs , 
+                                                                      query_sijs=query_sijs, 
+                                                                      magnificationEta=1)
+
+            if(smi_function == "logdetmi"):
+                obj = submodlib.LogDeterminantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
+                                                                    num_queries=smi_query_data_embedding.shape[0],
+                                                                    data_sijs=data_sijs,  
+                                                                    query_sijs=query_sijs,
+                                                                    query_query_sijs=query_query_sijs,
+                                                                    magnificationEta=1,
+                                                                    lambdaVal=1)
+                                                                    
             greedyList = obj.maximize(budget=budget_per_class, optimizer="LazyGreedy", stopIfZeroGain=False,
                                       stopIfNegativeGain=False, verbose=False)
             subset_idx_for_the_class = [x[0] for x in greedyList]
