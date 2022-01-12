@@ -94,8 +94,8 @@ WARMSTART_ITER = 10000
 consis_coef = 1
 consis_coef_outer = 1
 WARM = 0
-WARM_inner = 0
-WARM_inner_eval = 0
+WARM_inner = 1
+WARM_inner_eval = 2
 
 class ModelAgnosticMetaLearningComb(object):
     def __init__(self, model, optimizer=None, step_size=0.1, first_order=False,
@@ -274,7 +274,7 @@ class ModelAgnosticMetaLearningComb(object):
             if args.no_outer_selection:
                 loss_unlabeled, select_stat = 0, 0
             else:
-                if args.ssl_algo == "PLtopZperClass":
+                if args.ssl_algo in ["PLtopZperClass", "PLtopZ"]:
                     # torch.cuda.empty_cache()
                     loss_unlabeled, select_stat, selected_ids_outer = ssl_obj_outer(unlabeled_inputs,
                                                                                     self.model, params,
@@ -312,7 +312,10 @@ class ModelAgnosticMetaLearningComb(object):
             if self.coef_outer >= 0:
                 coeff = self.coef_outer
             elif self.coef_outer == -1:     # epoch
+                # if progress < 300:
                 coeff = consis_coef_outer * math.exp(-5 * (1 - min(progress / WARMSTART_EPOCH, 1)) ** 2)
+                # else:
+                #     coeff = 2
             elif self.coef_outer == -2:     # iteration
                 coeff = consis_coef_outer * math.exp(-5 * (1 - min((progress * sub_progress) / WARMSTART_ITER, 1)) ** 2)
             mean_outer_loss += coeff*loss_unlabeled
