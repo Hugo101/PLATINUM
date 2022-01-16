@@ -296,9 +296,10 @@ class CombinationMetaDataset(MetaDataset):
             index_distractor = index[self.num_classes_per_task:]
             datasets_distractor = [self.dataset[i] for i in index_distractor]
             task_dist = ConcatTask(datasets_distractor, self.num_classes_distractor,
-                                   target_transform=wrap_transform(self.target_transform, self._copy_categorical,
+                                   target_transform=wrap_transform(Categorical(self.num_classes_distractor),
+                                                                   self._copy_categorical,
                                                                    transform_type=Categorical))
-            # todo: check the self._copy_categorical when the num_classes_distractor is not the same as num_ways
+
             task_generated = self.dataset_transform(task, task_dist)
 
 
@@ -315,12 +316,15 @@ class CombinationMetaDataset(MetaDataset):
 
         return task_generated
 
+
     def _copy_categorical(self, transform):
         assert isinstance(transform, Categorical)
         transform.reset()
         if transform.num_classes is None:
-            transform.num_classes = self.num_classes_per_task
+            raise ValueError('transform.num_classes must be positive integers. Check the Categorical function')
+            # transform.num_classes = self.num_classes_per_task
         return deepcopy(transform)   # Use deepcopy on `Categorical` target transforms, to avoid any side effect across tasks.
+
 
     def __len__(self):
         num_classes, length = len(self.dataset), 1

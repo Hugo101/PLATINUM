@@ -68,7 +68,7 @@ class SubsetTask(Task, Subset):
 
 class SubsetCombine(Task):
     def __init__(self, dataset, indices, dataset_ood, indices_ood,
-                 num_classes=None, target_transform=None):
+                 num_classes=None):
         if num_classes is None:
             num_classes = dataset.num_classes
         Task.__init__(self, dataset.index, num_classes)
