@@ -83,16 +83,18 @@ class TieredImagenet(CombinationMetaDataset):
            for semi-supervised few-shot classification. International Conference 
            on Learning Representations. (https://arxiv.org/abs/1803.00676)
     """
-    def __init__(self, root, task_generate_method=None, num_classes_per_task=None, meta_train=False,
-                 meta_val=False, meta_test=False, meta_split=None,
+
+    def __init__(self, root, task_generate_method=None, num_classes_per_task=None, num_classes_distractor=None,
+                 meta_train=False, meta_val=False, meta_test=False, meta_split=None,
                  transform=None, target_transform=None, dataset_transform=None,
                  class_augmentations=None, download=False):
-        dataset = TieredImagenetClassDataset(root, meta_train=meta_train,
-                                             meta_val=meta_val, meta_test=meta_test, meta_split=meta_split,
+        dataset = TieredImagenetClassDataset(root, meta_train=meta_train, meta_val=meta_val, meta_test=meta_test,
+                                             meta_split=meta_split,
                                              transform=transform, class_augmentations=class_augmentations,
                                              download=download)
         super(TieredImagenet, self).__init__(dataset, task_generate_method, num_classes_per_task,
-            target_transform=target_transform, dataset_transform=dataset_transform)
+                                             num_classes_distractor=num_classes_distractor,
+                                             target_transform=target_transform, dataset_transform=dataset_transform)
 
 
 class TieredImagenetClassDataset(ClassDataset):
@@ -109,9 +111,9 @@ class TieredImagenetClassDataset(ClassDataset):
     def __init__(self, root, meta_train=False, meta_val=False, meta_test=False,
                  meta_split=None, transform=None, class_augmentations=None,
                  download=False):
-        super(TieredImagenetClassDataset, self).__init__(meta_train=meta_train,
-            meta_val=meta_val, meta_test=meta_test, meta_split=meta_split,
-            class_augmentations=class_augmentations)
+        super(TieredImagenetClassDataset, self).__init__(meta_train=meta_train, meta_val=meta_val, meta_test=meta_test,
+                                                         meta_split=meta_split,
+                                                         class_augmentations=class_augmentations)
 
         self.root = os.path.join(os.path.expanduser(root), self.folder)
         self.transform = transform
@@ -121,9 +123,9 @@ class TieredImagenetClassDataset(ClassDataset):
         self._labels = None
 
         self.split_filename = os.path.join(self.root,
-            self.filename.format(self.meta_split))
+                                           self.filename.format(self.meta_split))
         self.split_filename_labels = os.path.join(self.root,
-            self.filename_labels.format(self.meta_split))
+                                                  self.filename_labels.format(self.meta_split))
 
         if download:
             self.download()
@@ -131,20 +133,6 @@ class TieredImagenetClassDataset(ClassDataset):
         if not self._check_integrity():
             raise RuntimeError('TieredImagenet integrity check failed')
         self._num_classes = len(self.labels)
-
-    @property
-    def data(self):
-        if self._data is None:
-            self._data_file = h5py.File(self.split_filename, 'r')
-            self._data = self._data_file['datasets']
-        return self._data
-
-    @property
-    def labels(self):
-        if self._labels is None:
-            with open(self.split_filename_labels, 'r') as f:
-                self._labels = json.load(f)
-        return self._labels
 
     def __getitem__(self, index):
         specific_class_name = self.labels[index % self.num_classes]
@@ -154,22 +142,36 @@ class TieredImagenetClassDataset(ClassDataset):
         target_transform = self.get_target_transform(index)
 
         return TieredImagenetDataset(index, data,
-            general_class_name, specific_class_name,
-            transform=transform, target_transform=target_transform)
+                                     general_class_name, specific_class_name,
+                                     transform=transform, target_transform=target_transform)
 
     @property
     def num_classes(self):
         return self._num_classes
+
+    @property
+    def data(self):
+        if self._data is None:
+            self._data_file = h5py.File(self.split_filename, 'r')
+            self._data = self._data_file['datasets']   # mark the dataset
+        return self._data
+
+    @property
+    def labels(self):
+        if self._labels is None:
+            with open(self.split_filename_labels, 'r') as f:
+                self._labels = json.load(f)
+        return self._labels
+
+    def _check_integrity(self):
+        return (os.path.isfile(self.split_filename)
+                and os.path.isfile(self.split_filename_labels))
 
     def close(self):
         if self._data_file is not None:
             self._data_file.close()
             self._data_file = None
             self._data = None
-
-    def _check_integrity(self):
-        return (os.path.isfile(self.split_filename)
-            and os.path.isfile(self.split_filename_labels))
 
     def download(self):
         import tarfile
@@ -179,8 +181,8 @@ class TieredImagenetClassDataset(ClassDataset):
         if self._check_integrity():
             return
 
-        download_file_from_google_drive(self.gdrive_id, self.root,
-            self.tar_filename, md5=self.tar_md5)
+        # download_file_from_google_drive(self.gdrive_id, self.root,
+        #                                 self.tar_filename, md5=self.tar_md5)
 
         filename = os.path.join(self.root, self.tar_filename)
         with tarfile.open(filename, 'r') as f:
@@ -253,29 +255,29 @@ class TieredImagenetDataset(Dataset):
 
 
 if __name__ == '__main__':
-    from splitters_meta import ClassSplitter, ClassSplitterComUnlabel
+    from splitters_meta import ClassSplitter, ClassSplitterDist
     from torchmeta.transforms import Categorical
     from torchvision.transforms import ToTensor, Resize, Compose
 
-    name = 'miniimagenet'
-    folder = '/home/cxl173430/data/DATASETS/miniimagenet_test'  # do not change the folder address
+    name = 'tieredimagenet'
+    folder = '/home/cxl173430/data/DATASETS/'  # do not change the folder address
 
     transform = Compose([Resize(84), ToTensor()])
     dataset = TieredImagenetClassDataset(folder, meta_train=True, meta_val=False, meta_test=False, meta_split=None,
-                                       transform=transform, class_augmentations=None,
-                                       download=True)
+                                         transform=transform, class_augmentations=None,
+                                         download=True)
 
     print(dataset[0])
     '''
     dataset[0][0][0].shape
     Out[3]: torch.Size([3, 84, 84])
     dataset[0][0][1]
-    Out[4]: ('n01532829', None)
+    Out[4]: (('terrier', 'Yorkshire terrier'), None)
 
     len(dataset)
-    Out[1]: 64                   
+    Out[1]: 351                   
     len(dataset[0])
-    Out[2]: 600
+    Out[2]: 1300
 
     '''
 
@@ -285,17 +287,19 @@ if __name__ == '__main__':
     num_shots_test = 15
     num_shots_unlabel = 3
     hidden_size = 64
+    num_classes_distractor = 0
 
     dataset_transform = ClassSplitter(shuffle=True,
                                       num_train_per_class=num_shots,
                                       num_test_per_class=num_shots_test,
-                                      num_unlabel_per_class=num_shots_unlabel)
+                                      num_unlabeled_per_class=num_shots_unlabel)
 
     meta_train_dataset = TieredImagenet(folder,
                                       task_generate_method='woDistractor',
                                       transform=transform,
                                       target_transform=Categorical(num_ways),
                                       num_classes_per_task=num_ways,
+                                      num_classes_distractor=num_classes_distractor,
                                       meta_train=True,
                                       dataset_transform=dataset_transform,
                                       download=True)
@@ -303,42 +307,48 @@ if __name__ == '__main__':
     # sample_task = meta_train_dataset.sample_task()
     task_1 = meta_train_dataset[(0, 1, 3, 4, 5)]
     print("total number of samples in the task:", len(task_1['train']) + len(task_1['test']) + len(task_1['unlabeled']))
-    # total number of samples in the task: 63 #3*2 + 3*15 + 3*4= 6+45+12=63
-    print('image shape:', task_1['train'][0][0].shape)  # image shape: torch.Size([1, 28, 28])
-    print('image label:', task_1['train'][0][1])  # image label: 1
+    # total number of samples in the task: 63 #5*2 + 5*15 + 5*3= 10+75+15=100
+    print('image shape:', task_1['train'][0][0].shape)  # image shape: torch.Size([3, 84, 84])
+    print('image label:', task_1['train'][0][1])  # image label: 4
     pass
 
     # ##### END test for 1
 
-    ##### 2. this part is to test  "random"
-    num_ways = 3
+    ##### 2. this part is to test  "Distractor"
+    num_ways = 5
     num_shots = 2
-    num_shots_test = 15
-    num_unlabel_total = 200  # since the num of classes is 64, this number should be > 64
-    dataset_transform2 = ClassSplitterComUnlabel(shuffle=True,
-                                                 num_train_per_class=num_shots,
-                                                 num_test_per_class=num_shots_test,
-                                                 num_unlabel_total=num_unlabel_total)
+    num_shots_test_meta_train = 15
+    num_shots_distractor = 2  # since the num of classes is 64, this number should be > 64
+    num_classes_distractor = 3
+
+    dataset_transform2 = ClassSplitterDist(shuffle=True,
+                                          num_train_per_class=num_shots,
+                                          num_test_per_class=num_shots_test_meta_train,
+                                          num_unlabeled_per_class=num_shots_unlabel,
+                                          num_unlabel_OOD_per_class=num_shots_distractor)
 
     meta_train_dataset = TieredImagenet(folder,
-                                      task_generate_method='random',
+                                      task_generate_method='distractor',
                                       transform=transform,
                                       target_transform=Categorical(num_ways),
                                       num_classes_per_task=num_ways,
+                                      num_classes_distractor=num_classes_distractor,
                                       meta_train=True,
                                       dataset_transform=dataset_transform2,
                                       download=True)
 
+
     # sample_task = meta_train_dataset.sample_task()
-    task_2 = meta_train_dataset[(0, 1, 3)]
+    task_2 = meta_train_dataset[(0, 1, 3, 5, 2, 7, 8, 9)]
     print("total number of samples in the task:", len(task_2['train']) + len(task_2['test']) + len(task_2['unlabeled']))
+    # 5*2=10, 5*15 = 75, 5*3 + 3*2 = 21
     print('image shape:', task_2['train'][0][0].shape)
     print('image label:', task_2['train'][0][1])
     pass
 
     '''
-    total number of samples in the task: 251
+    total number of samples in the task: 106
     image shape: torch.Size([3, 84, 84])
-    image label: 1
+    image label: 3
     '''
     ##### END test for 2

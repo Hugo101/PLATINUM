@@ -6,12 +6,12 @@ arg_parser = argparse.ArgumentParser('MAML + SSL (SMI, PL, VAT and FixMatch(late
 arg_parser.add_argument('--seed', type=int, default=123)
 arg_parser.add_argument('--gpu_id', default=0, type=int,
                         help='GPU available. index of gpu, if <0 then use cpu')
-arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/miniimagenet_test',
+arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/',
                         help='Path to the folder the data is downloaded to.')
 arg_parser.add_argument('--output_folder', type=str, default="output/",
                         help='Path to the output folder to save the model.')
 arg_parser.add_argument('--dataset', type=str, default='miniimagenet',
-                        choices=['mnist', 'omniglot', 'miniimagenet', 'svhn'],
+                        choices=['mnist', 'omniglot', 'miniimagenet', 'tieredimagenet', 'cifarfs', 'svhn'],
                         help='Name of the dataset (default: omniglot).')
 arg_parser.add_argument('--ratio', type=float, default=0.4,
                         help='ratio of labeled for each class in the task.')
@@ -42,8 +42,11 @@ arg_parser.add_argument('--num_ways', type=int, default=5,
                         help='Number of classes per task (N in "N-way").')
 arg_parser.add_argument('--num_shots', type=int, default=5,
                         help='Number of examples per class for support set (k in "k-shot").')
-arg_parser.add_argument('--num_shots_test', type=int, default=15,
+arg_parser.add_argument('--num_shots_test_meta_train', type=int, default=15,
                         help='Number of examples per class for query set. If negative, same as `--num_shots`(default:15).')
+arg_parser.add_argument('--num_shots_test_meta_test', type=int, default=15,
+                        help='Number of examples per class for query set. If negative, same as `--num_shots`(default:15).')
+
 
 # unlabeled part, for with and without distractor
 arg_parser.add_argument('--num_shots_unlabeled', type=int, default=50,

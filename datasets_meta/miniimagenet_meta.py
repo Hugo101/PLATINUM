@@ -149,7 +149,7 @@ class MiniImagenetClassDataset(ClassDataset):
     def data(self):
         if self._data is None:
             self._data_file = h5py.File(self.split_filename, 'r')
-            self._data = self._data_file['datasets_self']
+            self._data = self._data_file['datasets_self']   # mark the dataset
         return self._data
 
     @property
@@ -237,7 +237,7 @@ if __name__ == '__main__':
     from torchmeta.transforms import Categorical
     from torchvision.transforms import ToTensor, Resize, Compose
     name = 'miniimagenet'
-    folder = '/home/cxl173430/data/DATASETS/miniimagenet_test' #do not change the folder address
+    folder = '/home/cxl173430/data/DATASETS/miniimagenet_test_test' #do not change the folder address
 
     transform = Compose([Resize(84), ToTensor()])
     dataset = MiniImagenetClassDataset(folder, meta_train=True, meta_val=False, meta_test=False, meta_split=None,

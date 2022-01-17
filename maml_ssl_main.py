@@ -39,8 +39,9 @@ def maml_ssl_main(args, device):
                                       args.data_folder,
                                       args.scenario,
                                       args.num_ways,
-                                      args.num_shots,             # shots in support set
-                                      args.num_shots_test,        # shots in query set
+                                      args.num_shots,                     # shots in support set
+                                      args.num_shots_test_meta_train,     # shots in query set for meta-train
+                                      args.num_shots_test_meta_test,      # shots in query set for meta-test
                                       args.num_shots_unlabeled,   # num of unlabeled images for meta-train tasks
                                       args.num_shots_unlabeled_evaluate,  # num of unlabeled images per class
                                       args.num_classes_distractor,     # with distractor
@@ -233,11 +234,11 @@ def main():
     # specific stopping policy model results
     few_shot_path = os.path.join(ssl_path, f"#way_{args.num_ways}_#shot_{args.num_shots}")
 
-    if args.ssl_algo == "SMI":
+    if args.ssl_algo in ["SMI", "SMIcomb"]:
         tag = '_'.join(['BudgetS', str(args.budget_s), 'BudgetQ', str(args.budget_q), "TrueLabel", str(args.select_true_label)])
     elif args.ssl_algo == "PL":
         tag = '_'.join(['TH', str(args.pl_threshold), "TrueLabel", str(args.select_true_label)])
-    elif args.ssl_algo == "PLtopZ":
+    elif args.ssl_algo in ["PLtopZ", "PLtopZperClass", "PLtopZperClassPLtopZ"]:
         tag = '_'.join(['TopZs', str(args.pl_num_topz), 'TopZq', str(args.pl_num_topz_outer), "TrueLabel", str(args.select_true_label)])
 
     if not args.resume:
