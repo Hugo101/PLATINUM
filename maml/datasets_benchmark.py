@@ -9,9 +9,10 @@ from datasets_meta.miniimagenet_meta import MiniImagenet
 from datasets_meta.mnist_meta import MNIST_meta
 from datasets_meta.SVHN_meta import SVHN_meta
 from datasets_meta.tieredimagenet_meta import TieredImagenet
+from datasets_meta.cifarfs_meta import CIFARFS
 from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterDist, ClassSplitterComUnlabel
 
-from maml.model import ModelConvOmniglot, ModelConvMiniImagenet, ModelConvSVHN, ModelMLPSinusoid
+from maml.model import ModelConvOmniglot, ModelConvMiniImagenet, ModelConvSVHN, ModelConvCIFARFS
 from maml.utils import ToTensor1D
 
 Benchmark = namedtuple('Benchmark', 'meta_train_dataset meta_val_dataset '
@@ -135,6 +136,39 @@ def get_benchmark_by_name(name,
 
         model = ModelConvMiniImagenet(num_ways, hidden_size=hidden_size) # todo: check
         loss_function = F.cross_entropy
+
+    elif name == 'cifarfs':
+        transform = Compose([ToTensor()])
+        meta_train_dataset = CIFARFS(folder,
+                                     task_generate_method,
+                                     transform=transform,
+                                     target_transform=Categorical(num_ways),
+                                     num_classes_per_task=num_ways,
+                                     num_classes_distractor=num_classes_distractor,
+                                     meta_train=True,
+                                     dataset_transform=dataset_transform,
+                                     download=True)
+
+        meta_val_dataset   = CIFARFS(folder,
+                                     task_generate_method,
+                                     transform=transform,
+                                     target_transform=Categorical(num_ways),
+                                     num_classes_per_task=num_ways,
+                                     num_classes_distractor=num_classes_distractor,
+                                     meta_val=True,
+                                     dataset_transform=dataset_transform_evaluate)
+
+        meta_test_dataset   = CIFARFS(folder,
+                                      task_generate_method,
+                                      transform=transform,
+                                      target_transform=Categorical(num_ways),
+                                      num_classes_per_task=num_ways,
+                                      num_classes_distractor=num_classes_distractor,
+                                      meta_test=True,
+                                      dataset_transform=dataset_transform_evaluate)
+        model = ModelConvCIFARFS(num_ways, hidden_size=hidden_size)
+        loss_function = F.cross_entropy
+
 
     elif name == 'omniglot': # todo: modify further
         class_augmentations = [Rotation([90, 180, 270])]
