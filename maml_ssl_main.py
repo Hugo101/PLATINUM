@@ -108,7 +108,7 @@ def maml_ssl_main(args, device):
 
     best_value = None
 
-    real_datasets = ["miniimagenet", "omniglot", "tieredimagenet"]
+    real_datasets = ["miniimagenet", "omniglot", "tieredimagenet", "cifarfs"]
     results_train = defaultdict(list)  # store all results from meta-training
     results_valid = defaultdict(list)   # store all results from meta-validation
     results_test = defaultdict(list)
@@ -178,7 +178,7 @@ def maml_ssl_main(args, device):
             with open(rst_path_valid_test, "w") as f:
                 json.dump(results_mean_val_tst_epochs, f, indent=2)
 
-            # ### Save the best model
+            # ### Save the best model based on validation set
             save_model = False
             if 'accuracies_after' in results_mean_val:
                 if (best_value is None) or (best_value < results_mean_val['accuracies_after']):
@@ -202,6 +202,10 @@ def maml_ssl_main(args, device):
                 with open(args.result_path, 'wb') as handle:
                     pickle.dump(best_epoch, handle, protocol=pickle.HIGHEST_PROTOCOL)
             # ###
+
+            # save model every interval_val epochs
+            with open(f"{args.model_path}_epoch_{epoch}.th", 'wb') as f:
+                torch.save(benchmark.model.state_dict(), f)
 
             # save some intemediate results, overwrite them epoch by epoch
             result_train_path = os.path.abspath(os.path.join(args.output_subfolder, f'results_train.pkl'))
