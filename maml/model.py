@@ -133,6 +133,10 @@ def ModelConvMiniImagenet(out_features, hidden_size=64):
     return MetaConvModel(3, out_features, hidden_size=hidden_size,
                          feature_size=5 * 5 * hidden_size)
 
+def ModelConvCIFARFS(out_features, hidden_size=64):
+    return MetaConvModel(3, out_features, hidden_size=hidden_size,
+                         feature_size=2 * 2 * hidden_size)
+
 def ModelConvSVHN(out_features, hidden_size=64):
     return MetaConvModel(3, out_features, hidden_size=hidden_size,
                          feature_size=2 * 2 * hidden_size)
