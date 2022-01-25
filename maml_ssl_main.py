@@ -160,6 +160,8 @@ def maml_ssl_main(args, device):
                 results_mean_val_tst_epochs["mean_accu_val"].append(results_mean_val["accuracies_after"])
             else:
                 results_mean_val, results_all_tasks_val = {}, {}
+                results_mean_val['accuracies_after'] = 0
+                results_mean_val['mean_outer_loss'] = 0
 
             # meta test
             # results_mean_tst, results_all_tasks_tst = {}, {}
