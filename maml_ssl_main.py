@@ -148,21 +148,24 @@ def maml_ssl_main(args, device):
 
         if epoch % INTERVAL_VAL == 0:
             # meta validation
-            results_mean_val, results_all_tasks_val = metalearner.evaluate(meta_valid_dataloader,
-                                                                           max_batches=args.num_batches,
-                                                                           batch_size=args.batch_size_val,
-                                                                           verbose=args.verbose,
-                                                                           progress=epoch,
-                                                                           desc=epoch_desc_val.format(epoch))
-            results_valid = append_data(results_valid, results_all_tasks_val)
-            results_mean_val_tst_epochs["mean_loss_val"].append(results_mean_val['mean_outer_loss'])
-            results_mean_val_tst_epochs["mean_accu_val"].append(results_mean_val["accuracies_after"])
+            if args.ssl_algo != "VAT":
+                results_mean_val, results_all_tasks_val = metalearner.evaluate(meta_valid_dataloader,
+                                                                               max_batches=args.num_batches,
+                                                                               batch_size=args.batch_size_val,
+                                                                               verbose=args.verbose,
+                                                                               progress=epoch,
+                                                                               desc=epoch_desc_val.format(epoch))
+                results_valid = append_data(results_valid, results_all_tasks_val)
+                results_mean_val_tst_epochs["mean_loss_val"].append(results_mean_val['mean_outer_loss'])
+                results_mean_val_tst_epochs["mean_accu_val"].append(results_mean_val["accuracies_after"])
+            else:
+                results_mean_val, results_all_tasks_val = {}, {}
 
             # meta test
             # results_mean_tst, results_all_tasks_tst = {}, {}
             if args.dataset in real_datasets:
                 results_mean_tst, results_all_tasks_tst = metalearner.evaluate(meta_test_dataloader,
-                                                                               max_batches=args.num_batches,
+                                                                               max_batches=args.num_batches_eval,
                                                                                batch_size=args.batch_size_test,
                                                                                verbose=args.verbose,
                                                                                progress=epoch,

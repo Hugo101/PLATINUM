@@ -20,25 +20,29 @@ class VAT(nn.Module):
         v = v / (1e-6 + v.pow(2).sum((1,2,3),keepdim=True)).sqrt()
         return v
 
-    def forward(self, x, y, model, mask):
-        model.update_batch_stats(False)
+    def forward(self, x, model, params):
+        # x: unlabeled_inputs
+        # model.update_batch_stats(False)
+        with torch.no_grad():
+            y = model(x, params=params)
+
         d = torch.randn_like(x)
         d = self.normalize(d)
         for _ in range(self.n_iteration):
             d.requires_grad = True
             x_hat = x + self.xi * d
-            y_hat = model(x_hat)
+            y_hat = model(x_hat, params=params)
             kld = self.kld(y.detach(), y_hat).mean()
             d = torch.autograd.grad(kld, d)[0]
             d = self.normalize(d).detach()
         x_hat = x + self.eps * d
-        y_hat = model(x_hat)
+        y_hat = model(x_hat, params=params)
         # NOTE:
         # Original implimentation of VAT defines KL(P(y|x)||P(x|x+r_adv)) as loss function
         # However, Avital Oliver's implimentation use KL(P(y|x+r_adv)||P(y|x)) as loss function of VAT
         # see issue https://github.com/brain-research/realistic-ssl-evaluation/issues/27
-        loss = (self.kld(y_hat, y.detach()) * mask).mean()
-        model.update_batch_stats(True)
+        loss = (self.kld(y_hat, y.detach())).mean()
+        # model.update_batch_stats(True)
         return loss
 
     def __reduce_max(self, v, idx_list):
