@@ -1,3 +1,3 @@
-code for the under review paper (ICML 2022)
+code for the under review paper
 
 maml_ssl_main.py is the main file.
