@@ -13,7 +13,7 @@ import common_tools as ct
 
 from datasets_meta.dataloader_meta import BatchMetaDataLoader
 from maml.datasets_benchmark import get_benchmark_by_name
-from maml.metalearners import ModelAgnosticMetaLearning, ModelAgnosticMetaLearningLST, ModelAgnosticMetaLearningComb
+from maml.metalearners import ModelAgnosticMetaLearningLST
 
 args = arg_parser.parse_args()
 
@@ -70,41 +70,20 @@ def maml_ssl_main(args, device):
                                               pin_memory=False)
 
     meta_optimizer = torch.optim.Adam(benchmark.model.parameters(), lr=args.meta_lr)
+    optimizer_swn  = torch.optim.Adam(benchmark.swn_model.parameters(), lr=args.swn_lr)
 
     # debugging
-    metalearner = ModelAgnosticMetaLearningComb(benchmark.model,
-                                            meta_optimizer,
-                                            step_size=args.step_size,
-                                            first_order=args.first_order,
-                                            num_adaptation_steps=args.num_steps,
-                                            num_adaptation_steps_test=args.num_steps_evaluate,
-                                            loss_function=benchmark.loss_function,
-                                            coef_inner=args.coef_inner,
-                                            coef_outer=args.coef_outer,
-                                            device=device)
+    metalearner = ModelAgnosticMetaLearningLST(benchmark.model,
+                                               benchmark.swn_model,
+                                               meta_optimizer,
+                                               optimizer_swn,
+                                               step_size=args.step_size,
+                                               first_order=args.first_order,
+                                               num_adaptation_steps=args.num_steps,
+                                               num_adaptation_steps_test=args.num_steps_evaluate,
+                                               loss_function=benchmark.loss_function,
+                                               device=device)
 
-    # if args.ssl_algo == "SMI":
-    #     metalearner = ModelAgnosticMetaLearning(benchmark.model,
-    #                                             meta_optimizer,
-    #                                             step_size=args.step_size,
-    #                                             first_order=args.first_order,
-    #                                             num_adaptation_steps=args.num_steps,
-    #                                             num_adaptation_steps_test=args.num_steps_evaluate,
-    #                                             loss_function=benchmark.loss_function,
-    #                                             coef_inner=args.coef_inner,
-    #                                             coef_outer=args.coef_outer,
-    #                                             device=device)
-    # else:
-    #     metalearner = ModelAgnosticMetaLearningBaseline(benchmark.model,
-    #                                             meta_optimizer,
-    #                                             step_size=args.step_size,
-    #                                             first_order=args.first_order,
-    #                                             num_adaptation_steps=args.num_steps,
-    #                                             num_adaptation_steps_test=args.num_steps_evaluate,
-    #                                             loss_function=benchmark.loss_function,
-    #                                             coef_inner=args.coef_inner,
-    #                                             coef_outer=args.coef_outer,
-    #                                             device=device)
 
     best_value = None
 
@@ -147,9 +126,9 @@ def maml_ssl_main(args, device):
         results_train = cat_data(results_train, result_train_per_epoch)
 
 
-        if epoch % INTERVAL_VAL == 0 and epoch > 100:
+        if epoch % INTERVAL_VAL == 0:
             # meta validation
-            if args.ssl_algo == "VAT":
+            if args.ssl_algo != "VAT" or args.num_classes_distractor != 3:
                 results_mean_val, results_all_tasks_val, _ = metalearner.evaluate(meta_valid_dataloader,
                                                                                max_batches=args.num_batches,
                                                                                batch_size=args.batch_size_val,
@@ -233,33 +212,25 @@ def maml_ssl_main(args, device):
 def main():
     start = time.time()  # float
     ct.create_path(args.output_folder)
-    specific_file_name, tag = "", ""
+    if args.dataset == "miniimagenet":
+        args.data_folder = "/home/cxl173430/data/DATASETS/miniimagenet_test"
+    else:
+        args.data_folder = "/home/cxl173430/data/DATASETS"
     # base_path/ssl_path/N-way K-shot/specific_model
     # base model folder, storing all results of all experiments
-    base_path = os.path.join(args.output_folder, f"{args.dataset}_{args.scenario}")
+    base_path = os.path.join(args.output_folder, f"Baseline_LST_firstOrder_{args.first_order}")
+    base_path = os.path.join(base_path, f"{args.dataset}_{args.scenario}_#way_{args.num_ways}_#shot_{args.num_shots}")
+    f"Baseline_LST_{args.output_folder}"
     # specific model folder, storing the specific model (specific combination in the configure file)
-    if args.ssl_algo == "SMI":
-        ssl_path = os.path.join(base_path, f"{args.ssl_algo}_{args.selection_option}_firstOrder_{args.first_order}")
-    else:
-        ssl_path = os.path.join(base_path, f"{args.ssl_algo}_firstOrder_{args.first_order}")
-    # specific stopping policy model results
-    few_shot_path = os.path.join(ssl_path, f"#way_{args.num_ways}_#shot_{args.num_shots}")
+    ssl_path = os.path.join(base_path, f"{args.selection_option_LST}_InnerLoopSteps_{args.inStepsSet}")
 
-    if args.ssl_algo in ["SMI", "SMIcomb"]:
-        tag = '_'.join(['BudgetS', str(args.budget_s), 'BudgetQ', str(args.budget_q), "TrueLabel", str(args.select_true_label)])
-    elif args.ssl_algo == "PL":
-        tag = '_'.join(['TH', str(args.pl_threshold), "TrueLabel", str(args.select_true_label)])
-    elif args.ssl_algo in ["PLtopZ", "PLtopZperClass", "PLtopZperClassPLtopZ"]:
-        tag = '_'.join(['TopZs', str(args.pl_num_topz), 'TopZq', str(args.pl_num_topz_outer), "TrueLabel", str(args.select_true_label)])
+    specific_file_name = '_'.join(['LabelRatio', str(args.ratio),'#OOD', str(args.num_classes_distractor), '#ShotU', str(args.num_shots_unlabeled),
+                                   'TopZs', str(args.pl_num_topz), "TrueLabel", str(args.select_true_label),
+                                   time.strftime('%Y-%m-%d-%H%M%S')])
+    specific_model_path = os.path.join(ssl_path, specific_file_name)
+    ct.create_path(specific_model_path)
 
-    if not args.resume:
-        specific_file_name = time.strftime('%Y-%m-%d-%H%M%S') + "_" + tag + "_" + '_'.join(
-            ['LabelRatio', str(args.ratio), '#ShotU', str(args.num_shots_unlabeled), '#InnerLR', str(args.step_size), 'Seed', str(args.seed), ])
-        specific_model_path = os.path.join(few_shot_path, specific_file_name)
-        ct.create_path(specific_model_path)
-        args.output_subfolder = os.path.abspath(specific_model_path)   # absolute path
-    else:
-        args.output_subfolder = os.path.abspath(args.checkpoint_path)  # absolute path
+    args.output_subfolder = os.path.abspath(specific_model_path)   # absolute path
 
     ct.set_logger('{}/log_file_outerLossAcc_seed_{}'.format(args.output_subfolder, args.seed), 'err')   # log file
     # ct.set_logger('{}/log_file_seed_{}'.format(args.output_subfolder, args.seed), 'out')   # log file
@@ -286,4 +257,3 @@ def main():
 if __name__ == "__main__":
     # torch.cuda.set_per_process_memory_fraction(0.9, 0)
     main()
-

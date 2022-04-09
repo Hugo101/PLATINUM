@@ -58,7 +58,7 @@ class MetaConvModel(MetaModule):
         ]))
         self.classifier = MetaLinear(feature_size, out_features, bias=True)
 
-    def forward(self, inputs, params=None, last=False, freeze=False): #modified for SMI function
+    def forward(self, inputs, params=None, last=False, freeze=False, keep_feat=False): #modified for SMI function
         if freeze:
             with torch.no_grad():
                 features = self.features(inputs, params=self.get_subdict(params, 'features')) # if params is None, get_subdict returns None
@@ -66,11 +66,13 @@ class MetaConvModel(MetaModule):
 
         else:
             features = self.features(inputs, params=self.get_subdict(params, 'features'))
-            features = features.view((features.size(0), -1))
+            features_flatten = features.view((features.size(0), -1))
 
-        logits = self.classifier(features, params=self.get_subdict(params, 'classifier'))
+        logits = self.classifier(features_flatten, params=self.get_subdict(params, 'classifier'))
 
-        if last:
+        # if last:
+        #     return logits, features_flatten
+        if keep_feat:
             return logits, features
         else:
             return logits

@@ -4,13 +4,13 @@ arg_parser = argparse.ArgumentParser('MAML + SSL (SMI, PL, VAT and FixMatch(late
 
 # General
 arg_parser.add_argument('--seed', type=int, default=123)
-arg_parser.add_argument('--gpu_id', default=0, type=int,
+arg_parser.add_argument('--gpu_id', default=5, type=int,
                         help='GPU available. index of gpu, if <0 then use cpu')
-arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/miniimagenet_test',
+arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/miniimagenet_test', #/miniimagenet_test
                         help='Path to the folder the data is downloaded to.')
 arg_parser.add_argument('--output_folder', type=str, default="output/",
                         help='Path to the output folder to save the model.')
-arg_parser.add_argument('--dataset', type=str, default='tieredimagenet',
+arg_parser.add_argument('--dataset', type=str, default='cifarfs',
                         choices=['mnist', 'omniglot', 'miniimagenet', 'tieredimagenet', 'cifarfs', 'svhn'],
                         help='Name of the dataset (default: omniglot).')
 arg_parser.add_argument('--ratio', type=float, default=0.01,
@@ -21,7 +21,7 @@ arg_parser.add_argument('--ratio', type=float, default=0.01,
 arg_parser.add_argument('--scenario', type=str, default="woDistractor",
                         choices=["woDistractor", "distractor", "random" , "allOOD"],
                         help="Different SS FSL approaches, including subset selection and baselines")
-arg_parser.add_argument('--ssl_algo', type=str, default='PLtopZperClass')  # "PL", "VAT", "SMI", "PLtopZ", "PLtopZperClass"
+arg_parser.add_argument('--ssl_algo', type=str, default='LST')  # "PL", "VAT", "SMI", "PLtopZ", "PLtopZperClass"
 arg_parser.add_argument('--selection_option', type=str, default='cross')  # "same", "cross", "union"
 arg_parser.add_argument('--type_smi', type=str, default='vanilla')  # "vanilla", "rank", "gain"
 arg_parser.add_argument('--ssl_algo_meta_test', type=str, default='mamlTestLargeS')  # "no",  "mamlTestLargeS"
@@ -92,6 +92,8 @@ arg_parser.add_argument('--num_batches_eval', type=int, default=100,
 arg_parser.add_argument('--step_size', type=float, default=0.001,
                         help='Size of the fast adaptation step, ie. learning rate in the '
                              'gradient descent update (default: 0.1).')
+arg_parser.add_argument('--swn_lr', type=float, default=0.001,
+                        help='learning rate for swn (default 0.001).')
 arg_parser.add_argument('--meta_lr', type=float, default=0.0001,
                         help='Learning rate for the meta-optimizer (optimization of the outer '
                              'loss). The default optimizer is Adam (default: 1e-3).')
@@ -122,8 +124,19 @@ arg_parser.add_argument('--verbose', action='store_true')
 arg_parser.add_argument('--select_true_label', action='store_true')  # false: pl, True: true label
 arg_parser.add_argument('--no_outer_selection', action='store_true',
                         help='whether outer loop has selection or not')
-arg_parser.add_argument("--interval_val", type=int, default=10)
+arg_parser.add_argument("--interval_val", type=int, default=1)
 
 arg_parser.add_argument("--WARMSTART_EPOCH", type=int, default=100)
 
 arg_parser.add_argument("--resume", action='store_true')
+
+##### tmp for LST
+arg_parser.add_argument('--WARM_inner', type=int, default=1)
+arg_parser.add_argument('--re_train_step', type=int, default=2)
+arg_parser.add_argument('--WARM_inner_test', type=int, default=2)
+arg_parser.add_argument('--re_train_step_test', type=int, default=5)
+arg_parser.add_argument('--selection_option_LST', type=str, default='withOUTSelection') # withoutSelection
+arg_parser.add_argument('--inStepsSet', type=str, default='small')  # large
+
+
+arg_parser.add_argument("--in_select_ty", type=str, default='continue')

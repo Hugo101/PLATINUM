@@ -29,7 +29,8 @@ class SMIselection(nn.Module):
                 model, params,
                 meta_train,
                 excluded=[],
-                strategy_args={}):
+                strategy_args={},
+                epoch=None):
 
         # # 0.: first remove the unlabeled examples from the excluded_set (for outer loop selection)
         if excluded:
@@ -49,7 +50,8 @@ class SMIselection(nn.Module):
                                                                               None,
                                                                               model, params,
                                                                               meta_train=meta_train,
-                                                                              strategy_args=strategy_args)
+                                                                              strategy_args=strategy_args,
+                                                                              epoch=epoch)
         print("\nselected indices: ", selected_idx) if self.verbose else None
 
         selected_idx_tensor = torch.tensor(selected_idx).to(strategy_args['device'])  # Tensor:(30,)
@@ -73,7 +75,8 @@ class SMIselection(nn.Module):
                    model_smi_copy,
                    model, params,
                    meta_train=True,
-                   strategy_args={}):
+                   strategy_args={},
+                   epoch=None):
 
         train_set = DatasetSMI(support_inputs, support_targets)
         # data loader transform
@@ -102,7 +105,10 @@ class SMIselection(nn.Module):
         unlabeled_set = LabeledToUnlabeledDataset(unlabeled_set)
 
         smi_function = strategy_args['smi_function'] if 'smi_function' in strategy_args else "fl2mi"
-        embedding_type = strategy_args['embedding_type'] if 'embedding_type' in strategy_args else "gradients"
+        if epoch is None:
+            embedding_type = strategy_args['embedding_type'] if 'embedding_type' in strategy_args else "gradients"
+        else:
+            embedding_type = "gradients" if epoch<300 else "classScores"
 
         # compute embeddings of the unlabeled set out the class loop
         strategy_obj = Strategy(train_set, unlabeled_set, model, self.num_cls, strategy_args)
@@ -156,25 +162,25 @@ class SMIselection(nn.Module):
             if(smi_function == "gcmi"):
                 # print("Using GCMI for subset selection!")
                 obj = submodlib.GraphCutMutualInformationFunction(n=unlabeled_data_embedding.shape[0],   # 250
-                                                                          num_queries=smi_query_data_embedding.shape[0],  # 1
-                                                                          query_sijs=query_sijs,
-                                                                          metric="cosine")
+                                                                  num_queries=smi_query_data_embedding.shape[0],  # 1
+                                                                  query_sijs=query_sijs,
+                                                                  metric="cosine")
             
             if(smi_function == "fl1mi"):
                 obj = submodlib.FacilityLocationMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
-                                                                      num_queries=smi_query_data_embedding.shape[0], 
-                                                                      data_sijs=data_sijs , 
-                                                                      query_sijs=query_sijs, 
-                                                                      magnificationEta=1)
+                                                                          num_queries=smi_query_data_embedding.shape[0],
+                                                                          data_sijs=data_sijs,
+                                                                          query_sijs=query_sijs,
+                                                                          magnificationEta=1)
 
             if(smi_function == "logdetmi"):
                 obj = submodlib.LogDeterminantMutualInformationFunction(n=unlabeled_data_embedding.shape[0],
-                                                                    num_queries=smi_query_data_embedding.shape[0],
-                                                                    data_sijs=data_sijs,  
-                                                                    query_sijs=query_sijs,
-                                                                    query_query_sijs=query_query_sijs,
-                                                                    magnificationEta=1,
-                                                                    lambdaVal=1)
+                                                                        num_queries=smi_query_data_embedding.shape[0],
+                                                                        data_sijs=data_sijs,
+                                                                        query_sijs=query_sijs,
+                                                                        query_query_sijs=query_query_sijs,
+                                                                        magnificationEta=1,
+                                                                        lambdaVal=1)
                                                                     
             greedyList = obj.maximize(budget=budget_per_class, optimizer="LazyGreedy", stopIfZeroGain=False,
                                       stopIfNegativeGain=False, verbose=False)

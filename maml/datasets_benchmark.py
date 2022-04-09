@@ -13,10 +13,10 @@ from datasets_meta.cifarfs_meta import CIFARFS
 from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterDist, ClassSplitterComUnlabel
 
 from maml.model import ModelConvOmniglot, ModelConvMiniImagenet, ModelConvSVHN, ModelConvCIFARFS
-from maml.utils import ToTensor1D
+from maml.swn_model import swn
 
 Benchmark = namedtuple('Benchmark', 'meta_train_dataset meta_val_dataset '
-                                    'meta_test_dataset model loss_function')
+                                    'meta_test_dataset model loss_function swn_model')
 
 
 def get_benchmark_by_name(name,
@@ -104,6 +104,7 @@ def get_benchmark_by_name(name,
 
         model = ModelConvMiniImagenet(num_ways, hidden_size=hidden_size)
         loss_function = F.cross_entropy
+        swn_model = swn(64)
 
     elif name == 'tieredimagenet':
         transform = Compose([Resize(84), ToTensor()])
@@ -136,6 +137,7 @@ def get_benchmark_by_name(name,
 
         model = ModelConvMiniImagenet(num_ways, hidden_size=hidden_size) # todo: check
         loss_function = F.cross_entropy
+        swn_model = swn(64)
 
     elif name == 'cifarfs':
         transform = Compose([ToTensor()])
@@ -168,6 +170,7 @@ def get_benchmark_by_name(name,
                                       dataset_transform=dataset_transform_evaluate)
         model = ModelConvCIFARFS(num_ways, hidden_size=hidden_size)
         loss_function = F.cross_entropy
+        swn_model = swn(64, isCIFARFS=True)
 
 
     elif name == 'omniglot': # todo: modify further
@@ -267,7 +270,8 @@ def get_benchmark_by_name(name,
                      meta_val_dataset=meta_val_dataset,
                      meta_test_dataset=meta_test_dataset,
                      model=model,
-                     loss_function=loss_function)
+                     loss_function=loss_function,
+                     swn_model=swn_model)
 
 
 if __name__ == "__main__":

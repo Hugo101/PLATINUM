@@ -129,8 +129,8 @@ WARMSTART_ITER = 10000
 consis_coef = 1
 consis_coef_outer = 1
 WARM = 0
-WARM_inner = 1
-WARM_inner_eval = 1
+WARM_inner = 5  # for 20, 1 for 5
+WARM_inner_eval = 20 # for 100, 1 for 10
 
 class ModelAgnosticMetaLearningComb(object):
     def __init__(self, model, optimizer=None, step_size=0.1, first_order=False,
@@ -419,6 +419,8 @@ class ModelAgnosticMetaLearningComb(object):
             elif args.ssl_algo in ["PLtopZ", "PLtopZperClass", "PLtopZperClassPLtopZ"]:
                 if step < warm_step:
                     loss_unlabeled, select_stat = 0, 0
+                elif args.in_select_ty == "NOTcontinue" and step % 5 != 0:
+                    loss_unlabeled, select_stat = 0, 0
                 else:
                     loss_unlabeled, select_stat, selected_ids = ssl_obj(unlabeled_inputs,
                                                                         self.model, params,
@@ -435,6 +437,9 @@ class ModelAgnosticMetaLearningComb(object):
 
             elif args.ssl_algo == "SMI":  # SMI
                 if step < warm_step:
+                    loss_unlabeled, select_stat = 0, 0
+                elif args.in_select_ty == "NOTcontinue" and step % 3 != 0:
+                    print("AAAAAAAAAAAAAAAAA")
                     loss_unlabeled, select_stat = 0, 0
                 else:
                     strategy_args['device'] = self.device
@@ -583,6 +588,8 @@ class ModelAgnosticMetaLearningComb(object):
             "accuracy_change_per_task": [],
             "accuracies_after": [],
         }
+
+        accuracies = []
         with tqdm(total=max_batches*batch_size, disable=False, **kwargs) as pbar:
             for results in self.evaluate_iter(dataloader, max_batches=max_batches, progress=progress):
                 pbar.update(batch_size)
@@ -593,6 +600,8 @@ class ModelAgnosticMetaLearningComb(object):
                     mean_accuracy += (np.mean(results['accuracies_after']) - mean_accuracy) / count
                     postfix['accuracy'] = '{0:.4f}'.format(mean_accuracy)
                 pbar.set_postfix(**postfix)
+
+                accuracies.append(results['accuracies_after'])
 
                 if verbose:
                     print("\ninner loss (labeled): \n{}".format(results['inner_losses_labeled']))
@@ -609,7 +618,15 @@ class ModelAgnosticMetaLearningComb(object):
         if 'accuracies_after' in results:
             mean_results['accuracies_after'] = mean_accuracy
 
-        return mean_results, result_per_epoch
+
+        metaval_accuracies = np.concatenate(accuracies, axis=0)
+        # print(metaval_accuracies)
+        means = np.mean(metaval_accuracies, 0)
+        stds = np.std(metaval_accuracies, 0)
+        ci95 = 1.96 * stds / np.sqrt(len(metaval_accuracies))
+        # print(ci95)
+
+        return mean_results, result_per_epoch, ci95
 
 
     def evaluate_iter(self, dataloader, max_batches=500, progress=0):

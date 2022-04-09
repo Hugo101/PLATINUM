@@ -96,7 +96,7 @@ class PLtopZ(nn.Module):
             else:
                 p_target = gt_mask[:, None] * onehot_label_pred
 
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         # selected_unlabel_samples = unlabeled_inputs[selected_idx]
         # model.train() # tmp
         output = model(unlabeled_inputs, params=params)  # only one batch
