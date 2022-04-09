@@ -1,5 +1,3 @@
-# MAML_SMI_version2
--- todo: merge this to version1 later
+code for the paper: PLATINUM: Semi-Supervised Model Agnostic Meta-Learning using Submodular Mutual Information (under review)
 
-1. add another dataset: tiredImageNet 
-2. add more about checkpoints 
+maml_ssl_main.py is the main file.
