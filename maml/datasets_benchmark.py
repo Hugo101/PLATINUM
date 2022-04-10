@@ -10,7 +10,7 @@ from datasets_meta.mnist_meta import MNIST_meta
 from datasets_meta.SVHN_meta import SVHN_meta
 from datasets_meta.tieredimagenet_meta import TieredImagenet
 from datasets_meta.cifarfs_meta import CIFARFS
-from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterDist, ClassSplitterComUnlabel
+from datasets_meta.splitters_meta import ClassSplitter, ClassSplitterDist, ClassSplitterComUnlabel, ClassSplitterImbalance
 
 from maml.model import ModelConvOmniglot, ModelConvMiniImagenet, ModelConvSVHN, ModelConvCIFARFS
 from maml.swn_model import swn
@@ -72,6 +72,17 @@ def get_benchmark_by_name(name,
                                                              num_train_per_class=num_shots,
                                                              num_test_per_class=num_shots_test_meta_test,
                                                              num_unlabeled_total=num_unlabeled_total_evaluate)
+
+    elif task_generate_method == "imbalance":
+        dataset_transform = ClassSplitterImbalance(shuffle=True,
+                                                    num_train_per_class=num_shots,
+                                                    num_test_per_class=num_shots_test_meta_train,
+                                                    num_unlabeled_per_class=num_shots_unlabel)
+
+        dataset_transform_evaluate = ClassSplitterImbalance(shuffle=True,       # make it to be false to debug
+                                                             num_train_per_class=num_shots,
+                                                             num_test_per_class=num_shots_test_meta_test,
+                                                             num_unlabeled_per_class=num_shots_unlabel)
 
     if name == 'miniimagenet':
         transform = Compose([Resize(84), ToTensor()])

@@ -126,9 +126,9 @@ def maml_ssl_main(args, device):
         results_train = cat_data(results_train, result_train_per_epoch)
 
 
-        if epoch % INTERVAL_VAL == 0:
+        if epoch % INTERVAL_VAL == 0 and epoch >= 100:
             # meta validation
-            if args.ssl_algo != "VAT" or args.num_classes_distractor != 3:
+            if args.ssl_algo == "VAT":
                 results_mean_val, results_all_tasks_val, _ = metalearner.evaluate(meta_valid_dataloader,
                                                                                max_batches=args.num_batches,
                                                                                batch_size=args.batch_size_val,

@@ -53,7 +53,7 @@ class PLtopZ(nn.Module):
             labels_unlabeled_select = unlabeled_targets * gt_mask
             num_oods_select = (labels_unlabeled_select == -1).sum(dim=0)
 
-        if self.scenario in ["woDistractor", "distractor"]:
+        if self.scenario in ["woDistractor", "distractor", "imbalance"]:
             # ====== log the selection statistics
             selected_targets = unlabeled_targets[selected_idx]  # todo: check the index whether matched or not
             num_selected_correct = torch.sum(selected_targets == selected_pseudolabels)

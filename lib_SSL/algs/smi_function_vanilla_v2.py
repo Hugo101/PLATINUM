@@ -217,7 +217,7 @@ class SMIselection(nn.Module):
             labels_unlabeled_select = unlabeled_targets * gt_mask
             num_oods_select = (labels_unlabeled_select == -1).sum(dim=0)
 
-        if self.scenario in ["woDistractor", "distractor"]:  # does not work for random selection for now
+        if self.scenario in ["woDistractor", "distractor", "imbalance"]:  # does not work for random selection for now
             # ====== log the selection statistics
             selected_targets = unlabeled_targets[selected_idx]  # todo: check the index whether matched or not
             # print("************** selected target:", selected_targets)

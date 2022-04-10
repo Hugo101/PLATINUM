@@ -10,7 +10,7 @@ arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data
                         help='Path to the folder the data is downloaded to.')
 arg_parser.add_argument('--output_folder', type=str, default="output/",
                         help='Path to the output folder to save the model.')
-arg_parser.add_argument('--dataset', type=str, default='cifarfs',
+arg_parser.add_argument('--dataset', type=str, default='miniimagenet',
                         choices=['mnist', 'omniglot', 'miniimagenet', 'tieredimagenet', 'cifarfs', 'svhn'],
                         help='Name of the dataset (default: omniglot).')
 arg_parser.add_argument('--ratio', type=float, default=0.01,
@@ -19,9 +19,9 @@ arg_parser.add_argument('--ratio', type=float, default=0.01,
 
 # SSL Experimental Setting
 arg_parser.add_argument('--scenario', type=str, default="woDistractor",
-                        choices=["woDistractor", "distractor", "random" , "allOOD"],
+                        choices=["woDistractor", "distractor", "random" , "imbalance"],
                         help="Different SS FSL approaches, including subset selection and baselines")
-arg_parser.add_argument('--ssl_algo', type=str, default='LST')  # "PL", "VAT", "SMI", "PLtopZ", "PLtopZperClass"
+arg_parser.add_argument('--ssl_algo', type=str, default='PLtopZperClass')  # "PL", "VAT", "SMI", "PLtopZ", "PLtopZperClass"
 arg_parser.add_argument('--selection_option', type=str, default='cross')  # "same", "cross", "union"
 arg_parser.add_argument('--type_smi', type=str, default='vanilla')  # "vanilla", "rank", "gain"
 arg_parser.add_argument('--ssl_algo_meta_test', type=str, default='mamlTestLargeS')  # "no",  "mamlTestLargeS"
@@ -140,3 +140,6 @@ arg_parser.add_argument('--inStepsSet', type=str, default='small')  # large
 
 
 arg_parser.add_argument("--in_select_ty", type=str, default='continue')
+
+arg_parser.add_argument('--num_unlabel_many', type=int, default=50)
+arg_parser.add_argument('--num_unlabel_less', type=int, default=25)

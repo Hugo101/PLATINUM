@@ -287,7 +287,7 @@ class CombinationMetaDataset(MetaDataset):
                           target_transform=wrap_transform(self.target_transform,
                                                           self._copy_categorical, transform_type=Categorical))
 
-        if self.task_generate_method == "woDistractor":
+        if self.task_generate_method in ["woDistractor", "imbalance"]:
             if self.dataset_transform is not None:
                 task_generated = self.dataset_transform(task)
 
