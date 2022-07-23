@@ -1,3 +1,2 @@
-code for the paper: PLATINUM: Semi-Supervised Model Agnostic Meta-Learning using Submodular Mutual Information (under review)
+code for the paper: PLATINUM: Semi-Supervised Model Agnostic Meta-Learning using Submodular Mutual Information (ICML 2022)
 
-maml_ssl_main.py is the main file.
