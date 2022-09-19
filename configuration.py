@@ -4,7 +4,7 @@ arg_parser = argparse.ArgumentParser('MAML + SSL (SMI, PL, VAT and FixMatch(late
 
 # General
 arg_parser.add_argument('--seed', type=int, default=123)
-arg_parser.add_argument('--gpu_id', default=5, type=int,
+arg_parser.add_argument('--gpu_id', default=7, type=int,
                         help='GPU available. index of gpu, if <0 then use cpu')
 arg_parser.add_argument('--data_folder', type=str, default='/home/cxl173430/data/DATASETS/miniimagenet_test', #/miniimagenet_test
                         help='Path to the folder the data is downloaded to.')

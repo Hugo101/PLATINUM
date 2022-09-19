@@ -1,5 +1,6 @@
 import copy
 import torch
+import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
@@ -11,10 +12,11 @@ from maml.utils import tensors_to_device, compute_accuracy
 from lib_SSL.config import config
 import pickle
 from configuration import arg_parser
-
 args = arg_parser.parse_args()
 
-__all__ = ['ModelAgnosticMetaLearningComb']
+__all__ = ['RFS']
+
+META_TEST_FREEZE = False
 
 strategy_args = {'batch_size': 20, 'device': "cpu", 'embedding_type': 'gradients', 'keep_embedding': False}
 strategy_args['smi_function'] = args.sf
@@ -22,107 +24,35 @@ strategy_args['optimizer'] = 'LazyGreedy'
 strategy_args['embedding_type'] = args.embedding_type
 
 if args.ssl_algo == 'SMI' and args.type_smi == "vanilla":
-
     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
     print(f"outer loop: {args.no_outer_selection}")
 
     # from lib_SSL.algs.smi_function import smi_pl_comb
     # from lib_SSL.algs.smi_function_vanilla import smi_pl_comb
-    from lib_SSL.algs.smi_function_vanilla_v2 import SMIselection
+    from lib_SSL.algs.smi_function_vanilla_v2_rfs import SMIselection
     ssl_obj       = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, True,
                                  args.verbose)
-
     ssl_obj_outer = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, False,
                                  args.verbose)
 
-if args.ssl_algo == 'SMIcomb' and args.type_smi == "vanilla":
+    ssl_obj_meta_tst = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, True,
+                           args.verbose, META_TEST_FREEZE)
 
-    print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
-    print(f"outer loop: {args.no_outer_selection}")
-
-    # from lib_SSL.algs.smi_function import smi_pl_comb
-    # from lib_SSL.algs.smi_function_vanilla import smi_pl_comb
-    from lib_SSL.algs.smi_function_vanilla_v2 import SMIselection
-    ssl_obj       = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, True,
-                                 args.verbose)
-
-    ssl_obj_outer = SMIselection(args.num_ways, args.select_true_label, args.scenario, args.selection_option, False,
-                                 args.verbose)
-# elif args.ssl_algo == 'SMI' and args.type_smi == "rank":
-#     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
-#     # from lib_SSL.algs.smi_function import smi_pl_comb
-#     from lib_SSL.algs.smi_function_rank import smi_pl_comb
-#
-# elif args.ssl_algo == 'SMI' and args.type_smi == "gain":
-#     print(f"##### Subset Selection algorithm: {args.ssl_algo}, TrueLabel:{args.select_true_label}")
-#     # from lib_SSL.algs.smi_function import smi_pl_comb
-#     from lib_SSL.algs.smi_function_gain import smi_pl_comb
-
-
-# other baselines
-if args.ssl_algo == 'PLtopZ':
-    from lib_SSL.algs.pseudo_label_topZ import PLtopZ
-    # consis_coef = 1
-
-    print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), "
-          f"TrueLabel:{args.select_true_label}")
-    ssl_obj       = PLtopZ(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
-                           args.scenario, args.verbose, args.pl_threshold)
-
-    print(f"## SSL algorithm (outer loop: {args.no_outer_selection}): {args.ssl_algo} (TH:{args.pl_threshold_outer}), "
-          f"TrueLabel:{args.select_true_label}")
-    ssl_obj_outer = PLtopZ(args.num_ways, args.pl_num_topz_outer, args.pl_batch_size, args.select_true_label,
-                           args.scenario, args.verbose, args.pl_threshold_outer)
 
 if args.ssl_algo == 'PLtopZperClass':
-    from lib_SSL.algs.pseudo_label_topZ_perClass import PLtopZ
-    # consis_coef = 1
-
+    from lib_SSL.algs.pseudo_label_topZ_perClass_rfs import PLtopZ
     print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), TrueLabel:{args.select_true_label}")
     # the last argument is the flag to determine whether per class selection or not
     ssl_obj       = PLtopZ(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
                            args.scenario, args.verbose, args.pl_threshold)
-
     print(f"## SSL algorithm (outer loop: {args.no_outer_selection}): {args.ssl_algo} (TH:{args.pl_threshold_outer}), "
           f"TrueLabel:{args.select_true_label}")
     ssl_obj_outer = PLtopZ(args.num_ways, args.pl_num_topz_outer, args.pl_batch_size, args.select_true_label,
                            args.scenario, args.verbose, args.pl_threshold_outer)
 
+    ssl_obj_meta_tst = PLtopZ(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
+                     args.scenario, args.verbose, args.pl_threshold, META_TEST_FREEZE)
 
-if args.ssl_algo == 'PLtopZperClassPLtopZ':
-    from lib_SSL.algs.pseudo_label_topZ_perClass import PLtopZ as PLtopZperClass
-    from lib_SSL.algs.pseudo_label_topZ import PLtopZ
-    # consis_coef = 1
-
-    print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), TrueLabel:{args.select_true_label}")
-    # the last argument is the flag to determine whether per class selection or not
-    ssl_obj       = PLtopZperClass(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
-                           args.scenario, args.verbose, args.pl_threshold)
-
-    print(f"## SSL algorithm (outer loop: {args.no_outer_selection}): {args.ssl_algo} (TH:{args.pl_threshold_outer}), "
-          f"TrueLabel:{args.select_true_label}")
-    ssl_obj_outer = PLtopZ(args.num_ways, args.pl_num_topz_outer, args.pl_batch_size, args.select_true_label,
-                           args.scenario, args.verbose, args.pl_threshold_outer)
-
-
-if args.ssl_algo == 'VAT':
-    print("SSL algorithm: VAT")
-    from lib_SSL.algs.vat import VAT
-    alg_cfg = config['VAT']
-    consis_coef = alg_cfg['consis_coef']
-    ssl_obj = VAT(alg_cfg["eps"]["svhn"], alg_cfg["xi"], 1)
-
-# debugging
-from lib_SSL.algs.pseudo_label_topZ_perClass import PLtopZ
-print(f"## SSL algorithm (inner loop): {args.ssl_algo} (TH:{args.pl_threshold}), TrueLabel:{args.select_true_label}")
-# the last argument is the flag to determine whether per class selection or not
-ssl_obj_pl       = PLtopZ(args.num_ways, args.pl_num_topz, args.pl_batch_size, args.select_true_label,
-                       args.scenario, args.verbose, args.pl_threshold)
-
-print(f"## SSL algorithm (outer loop: {args.no_outer_selection}): {args.ssl_algo} (TH:{args.pl_threshold_outer}), "
-      f"TrueLabel:{args.select_true_label}")
-ssl_obj_outer_pl = PLtopZ(args.num_ways, args.pl_num_topz_outer, args.pl_batch_size, args.select_true_label,
-                       args.scenario, args.verbose, args.pl_threshold_outer)
 
 WARMSTART_EPOCH = args.WARMSTART_EPOCH
 WARMSTART_ITER = 10000
@@ -132,7 +62,7 @@ WARM = 0
 WARM_inner = 5  # for 20, 1 for 5
 WARM_inner_eval = 20 # for 100, 1 for 10
 
-class ModelAgnosticMetaLearningComb(object):
+class RFS(object):
     def __init__(self, model, optimizer=None, step_size=0.1, first_order=False,
                  learn_step_size=False, per_param_step_size=False,
                  num_adaptation_steps=1,
@@ -298,7 +228,7 @@ class ModelAgnosticMetaLearningComb(object):
 
             # ############### outer loop
             with torch.set_grad_enabled(self.model.training):
-                query_logits = self.model(query_inputs, params=params)
+                query_logits = self.model(query_inputs, params=params) # todo:resnet
                 outer_loss = self.loss_function(query_logits, query_targets)
                 results['outer_losses'][task_id] = outer_loss.item()
                 mean_outer_loss += outer_loss
@@ -306,7 +236,7 @@ class ModelAgnosticMetaLearningComb(object):
 
             # outer subset selection
             print("\n++++++ outer loop:") if args.verbose else None
-            if args.no_outer_selection or args.ssl_algo == 'VAT':
+            if args.no_outer_selection or args.ssl_algo in ['VAT', 'MAML']:
                 loss_unlabeled, select_stat = 0, 0
             else:
                 if args.ssl_algo in ["PLtopZperClass", "PLtopZ", "PLtopZperClassPLtopZ"]:
@@ -400,7 +330,10 @@ class ModelAgnosticMetaLearningComb(object):
 
         for step in range(num_adaptation_steps):
             print(f"\n++++++ At Inner Step {step+1}:") if args.verbose else None
-            outputs_support = self.model(support_inputs, params=params)
+            if meta_train:
+                outputs_support = self.model(support_inputs, params=params)
+            else:
+                outputs_support = self.model(support_inputs, params=params, freeze=META_TEST_FREEZE)
             # torch.cuda.empty_cache()
             # print("################# sleeping for 60 secs")
             # time.sleep(60)
@@ -417,14 +350,19 @@ class ModelAgnosticMetaLearningComb(object):
                 loss_unlabeled, select_stat = 0, 0
 
             elif args.ssl_algo in ["PLtopZ", "PLtopZperClass", "PLtopZperClassPLtopZ"]:
-                if step < warm_step or step >int(num_adaptation_steps*0.6):
+                if step < warm_step:
                     loss_unlabeled, select_stat = 0, 0
                 elif args.in_select_ty == "NOTcontinue" and step % 5 != 0:
                     loss_unlabeled, select_stat = 0, 0
                 else:
-                    loss_unlabeled, select_stat, selected_ids = ssl_obj(unlabeled_inputs,
-                                                                        self.model, params,
-                                                                        unlabeled_targets)
+                    if meta_train:
+                        loss_unlabeled, select_stat, selected_ids = ssl_obj(unlabeled_inputs,
+                                                                            self.model, params,
+                                                                            unlabeled_targets)
+                    else:
+                        loss_unlabeled, select_stat, selected_ids = ssl_obj_meta_tst(unlabeled_inputs,
+                                                                            self.model, params,
+                                                                            unlabeled_targets)
                     selected_ids_inner.extend(selected_ids)
 
             elif args.ssl_algo in ["VAT"]:
@@ -448,14 +386,25 @@ class ModelAgnosticMetaLearningComb(object):
                         strategy_args['batch_size'] = args.num_ways * args.num_shots_unlabeled
                     else:
                         strategy_args['batch_size'] = args.num_ways * args.num_shots_unlabeled_evaluate
-                    loss_unlabeled, select_stat, selected_ids = ssl_obj(support_inputs, support_targets,
-                                                                        query_inputs, query_targets,
-                                                                        unlabeled_inputs, unlabeled_targets,
-                                                                        None,
-                                                                        self.model, params,
-                                                                        meta_train, # true means meta-train
-                                                                        [],
-                                                                        strategy_args)
+                    if meta_train:
+                        loss_unlabeled, select_stat, selected_ids = ssl_obj(support_inputs, support_targets,
+                                                                            query_inputs, query_targets,
+                                                                            unlabeled_inputs, unlabeled_targets,
+                                                                            None,
+                                                                            self.model, params,
+                                                                            meta_train, # true means meta-train
+                                                                            [],
+                                                                            strategy_args)
+                    else:
+                        loss_unlabeled, select_stat, selected_ids = ssl_obj_meta_tst(support_inputs, support_targets,
+                                                                            query_inputs, query_targets,
+                                                                            unlabeled_inputs, unlabeled_targets,
+                                                                            None,
+                                                                            self.model, params,
+                                                                            meta_train,  # true means meta-train
+                                                                            [],
+                                                                            strategy_args)
+
                     selected_ids_inner.extend(selected_ids)
 
             elif args.ssl_algo == "SMIcomb":  # SMI

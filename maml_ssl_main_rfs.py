@@ -12,8 +12,8 @@ from configuration import arg_parser
 import common_tools as ct
 
 from datasets_meta.dataloader_meta import BatchMetaDataLoader
-from maml.datasets_benchmark import get_benchmark_by_name
-from maml.metalearners import ModelAgnosticMetaLearning, ModelAgnosticMetaLearningLST, ModelAgnosticMetaLearningComb
+from maml.datasets_benchmark_rfs import get_benchmark_by_name_rfs
+from maml.metalearners import RFS
 
 args = arg_parser.parse_args()
 
@@ -21,6 +21,8 @@ ct.set_random_seeds(args.seed)
 
 INTERVAL = 50
 INTERVAL_VAL = args.interval_val
+
+
 
 def cat_data(result_dict, new_dict):
     for key, values in new_dict.items():
@@ -35,7 +37,7 @@ def append_data(result_dict, new_dict):
 
 
 def maml_ssl_main(args, device):
-    benchmark = get_benchmark_by_name(args.dataset,
+    benchmark = get_benchmark_by_name_rfs(args.dataset,
                                       args.data_folder,
                                       args.scenario,
                                       args.num_ways,
@@ -72,16 +74,16 @@ def maml_ssl_main(args, device):
     meta_optimizer = torch.optim.Adam(benchmark.model.parameters(), lr=args.meta_lr)
 
     # debugging
-    metalearner = ModelAgnosticMetaLearningComb(benchmark.model,
-                                            meta_optimizer,
-                                            step_size=args.step_size,
-                                            first_order=args.first_order,
-                                            num_adaptation_steps=args.num_steps,
-                                            num_adaptation_steps_test=args.num_steps_evaluate,
-                                            loss_function=benchmark.loss_function,
-                                            coef_inner=args.coef_inner,
-                                            coef_outer=args.coef_outer,
-                                            device=device)
+    metalearner = RFS(benchmark.model,
+                        meta_optimizer,
+                        step_size=args.step_size,
+                        first_order=args.first_order,
+                        num_adaptation_steps=args.num_steps,
+                        num_adaptation_steps_test=args.num_steps_evaluate,
+                        loss_function=benchmark.loss_function,
+                        coef_inner=args.coef_inner,
+                        coef_outer=args.coef_outer,
+                        device=device)
 
     # if args.ssl_algo == "SMI":
     #     metalearner = ModelAgnosticMetaLearning(benchmark.model,
@@ -147,7 +149,8 @@ def maml_ssl_main(args, device):
         results_train = cat_data(results_train, result_train_per_epoch)
 
 
-        if epoch % INTERVAL_VAL == 0 and epoch > 400:
+        if epoch % INTERVAL_VAL == 0 and epoch >= 40:
+        # if epoch > 2:
             # meta validation
             if args.ssl_algo == "VAT":
                 results_mean_val, results_all_tasks_val, _ = metalearner.evaluate(meta_valid_dataloader,

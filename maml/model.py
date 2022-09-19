@@ -4,7 +4,8 @@ import torch.nn as nn
 from collections import OrderedDict
 from torchmeta.modules import (MetaModule, MetaConv2d, MetaBatchNorm2d,
                                MetaSequential, MetaLinear)
-
+import copy
+from maml.resnet import resnet12
 
 def conv_block(in_channels, out_channels, **kwargs):
     return MetaSequential(OrderedDict([
@@ -145,6 +146,70 @@ def ModelConvSVHN(out_features, hidden_size=64):
 
 def ModelMLPSinusoid(hidden_sizes=[40, 40]):
     return MetaMLPModel(1, 1, hidden_sizes)
+
+
+class MetaResNet12Model(MetaModule):
+    def __init__(self, out_features, hidden_size=64, feature_size=640):
+        super(MetaResNet12Model, self).__init__()
+        # self.in_channels = in_channels
+        self.out_features = out_features
+        # self.hidden_size = hidden_size
+        self.feature_size = feature_size
+
+        # pretrained model
+        model_path = "/data/cxl173430/MAML_SMI_sefDefine/maml/few-shot-models/mini_simple.pth"
+        self.features = resnet12(avg_pool=True, drop_rate=0.1, dropblock_size=5, num_classes=64)
+        ckpt = torch.load(model_path, map_location=torch.device("cpu"))
+        self.features.load_state_dict(ckpt['model'])
+
+        self.classifier = MetaLinear(feature_size, out_features, bias=True)
+
+    def forward(self, inputs, params=None, last=False, freeze=True, keep_feat=False): #modified for SMI function
+        params_classifier = params
+
+        if not freeze and params:
+            params_classifier = OrderedDict()
+            params_feat = {}
+            #  params_copy = copy.deepcopy(params)
+            params_copy = params.copy()
+            for k,v in params_copy.items():
+                if "classifier" in k:
+                    params_classifier[k] = params_copy[k]
+                else:
+                    params_feat[k] = params_copy[k]
+
+            model_dict = self.features.state_dict()
+            model_dict.update(params_feat)
+            self.features.load_state_dict(model_dict)
+
+        if freeze:
+            with torch.no_grad():
+                features, _ = self.features(inputs, is_feat=True) # if params is None, get_subdict returns None
+                features_flatten = features[-1].view((features[-1].size(0), -1))
+
+        else:
+            features, _ = self.features(inputs, is_feat=True)
+            features_flatten = features[-1].view((features[-1].size(0), -1))
+
+        logits = self.classifier(features_flatten, params=self.get_subdict(params_classifier, 'classifier'))
+
+        # if last:
+        #     return logits, features_flatten
+        if keep_feat:
+            return logits, features
+        else:
+            return logits
+
+    def get_embedding_dim(self): #added for SMI function
+        self.embDim = self.feature_size
+        return self.embDim
+
+
+    def update_batch_stats(self, flag): #added for PL, not used actually
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.update_batch_stats = flag
+
 
 if __name__ == '__main__':
 
