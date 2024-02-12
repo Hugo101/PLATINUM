@@ -9,7 +9,7 @@ This is the official code for the **ICML 2022** paper:
 
 
 ## Citing
-If you find NestedMAML useful in your work, please consider citing the following BibTeX entry:
+If you find PLATINUM useful in your work, please consider citing the following BibTeX entry:
 ```python
 @Inproceedings{li2022platinum,
   title={Platinum: Semi-supervised model agnostic meta-learning using submodular mutual information},
